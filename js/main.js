@@ -8,7 +8,7 @@ import { onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/
 import { doc, getDoc, setDoc, updateDoc, serverTimestamp, Timestamp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 import {
   SECTORS, SECTOR_COUNT, BERRIES, EMPTY_BERRIES,
-  simulate, totalGain, formatEvent, formatTime, newSeed,
+  simulate, totalGain, formatEvent, formatTime, newSeed, pokemonSnapshot,
 } from "./expedition.js";
 
 const $ = id => document.getElementById(id);
@@ -119,6 +119,7 @@ $("startBtn").addEventListener("click", async () => {
   const exp = {
     sector: selectedSector,
     pokemon: p.name,
+    pokemonData: pokemonSnapshot(p),
     durationSec,
     startAt: serverTimestamp(),
     seed: newSeed(),
@@ -201,6 +202,7 @@ async function claim() {
   const lastExpedition = {
     sector: exp.sector,
     pokemon: exp.pokemon,
+    pokemonData: exp.pokemonData ?? null,
     durationSec: exp.durationSec,
     seed: exp.seed,
   };
