@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>탐사</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <header>
+    <span id="userEmail"></span>
+    <button id="logoutBtn">로그아웃</button>
+  </header>
+
+  <p id="loading">불러오는 중...</p>
+
+  <main id="app" hidden>
+    <section>
+      <h2>SECTOR 선택</h2>
+      <div id="sectorList"></div>
+    </section>
+
+    <section id="sectorPanel" hidden>
+      <h2 id="sectorName"></h2>
+      <p>난이도: <span id="sectorDifficulty"></span></p>
+      <p>추천 타입: <span id="sectorRecommend"></span></p>
+
+      <h3>설정</h3>
+      <p>
+        포켓몬:
+        <select id="pokemonSelect"></select>
+      </p>
+      <p id="durationList">
+        시간:
+        <label><input type="radio" name="duration" value="60" checked> 1분</label>
+        <label><input type="radio" name="duration" value="180"> 3분</label>
+        <label><input type="radio" name="duration" value="300"> 5분</label>
+      </p>
+      <p><button id="startBtn">탐사 시작</button></p>
+    </section>
+
+    <section>
+      <h2>탐사 현황</h2>
+      <p id="expStatus">진행 중인 탐사가 없습니다.</p>
+      <h3 id="logTitle">로그</h3>
+      <ul id="logList"></ul>
+    </section>
+
+    <section>
+      <h2>보관함</h2>
+      <ul id="storageList"></ul>
+      <button id="storeBtn">인벤토리에 넣기</button>
+    </section>
+
+    <section>
+      <h2>인벤토리</h2>
+      <ul id="inventoryList"></ul>
+    </section>
+
+    <p id="msg" class="error"></p>
+  </main>
+
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>

@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>로그인</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <h1>방치형 포켓몬 탐사</h1>
+  <form id="loginForm">
+    <p><input type="email" id="email" placeholder="이메일" required autocomplete="username"></p>
+    <p><input type="password" id="password" placeholder="비밀번호" required autocomplete="current-password"></p>
+    <p><button type="submit">로그인</button></p>
+    <p id="msg" class="error"></p>
+  </form>
+
+  <script type="module" src="js/login.js"></script>
+</body>
+</html>

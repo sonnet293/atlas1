@@ -1,0 +1,4 @@
+body { font-family: sans-serif; max-width: 720px; margin: 0 auto; padding: 16px; }
+section { border-top: 1px solid #ccc; padding: 8px 0; }
+#sectorList button { margin: 2px; }
+.error { color: red; }
