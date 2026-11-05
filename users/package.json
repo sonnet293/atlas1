@@ -1,0 +1,13 @@
+{
+  "name": "atlas-users-upload",
+  "private": true,
+  "type": "module",
+  "description": "users.js의 유저 정보를 Firestore에 올리는 로컬 전용 스크립트 (웹사이트에서 사용하지 않음)",
+  "scripts": {
+    "upload": "node upload.js",
+    "check": "node upload.js --dry-run"
+  },
+  "dependencies": {
+    "firebase-admin": "^13.0.0"
+  }
+}
