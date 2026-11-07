@@ -1,0 +1,10 @@
+# 유저 정보 원본과 Firestore 관리자 키는 절대 깃허브에 올리지 않음 (users/upload.js로 Firestore에만 등록)
+users/users.js
+users/serviceAccountKey.json
+users/*.json.key
+users/node_modules/
+users/package-lock.json
+
+node_modules/
+.DS_Store
+Thumbs.db

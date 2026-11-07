@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="theme-color" content="#000000">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Nanum+Gothic+Coding:wght@400;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="../css/style.css">
+    <link rel="stylesheet" href="../css/lobby.css">
+    <title>// DBL - 01</title>
+</head>
+<body class="station page-main" data-backdrop="../img/spacestation.jpg">
+
+    <header class="topbar">
+        <span class="brand"><i class="led on"></i><span>PROJECT : VOYAGER</span><small class="hide-sm">// DOUBLE - 01</small></span>
+        <span class="grow"></span>
+        <span class="hide-sm">SIMULATION NODE <b>// 04</b></span>
+        <span><span class="hide-sm">UTC </span><b data-clock>--:--:--</b></span>
+    </header>
+
+    <main class="lobby">
+        <section class="lobby-hero" id="lobby-hero">
+            <span class="status-pill" id="room-status" data-status="waiting"><i></i><span>WAITING</span></span>
+            <span class="eyebrow">room // 04 · double battle</span>
+            <h1 id="room-name">DBL - 01</h1>
+        </section>
+
+        <div id="swap-status" class="swap-banner" role="status" hidden></div>
+
+        <section class="versus double">
+            <div class="team-col">
+                <span class="team-tag">TEAM A</span>
+                <article id="player1" class="player-card hud" data-state="empty"></article>
+                <article id="player2" class="player-card hud" data-state="empty"></article>
+            </div>
+            <div class="versus-mark">VS</div>
+            <div class="team-col">
+                <span class="team-tag">TEAM B</span>
+                <article id="player3" class="player-card hud" data-state="empty"></article>
+                <article id="player4" class="player-card hud" data-state="empty"></article>
+            </div>
+        </section>
+
+        <p id="lobby-hint" class="lobby-hint"></p>
+
+        <section class="spectators hud">
+            <header><h2>OBSERVE</h2><span class="count-badge" id="spectator-count">0</span></header>
+            <ul id="spectator-list" class="spectator-list"></ul>
+        </section>
+    </main>
+
+    <footer class="lobby-actions">
+        <button type="button" id="leaveBtn" class="btn btn-ghost">LEAVE</button>
+        <button type="button" id="readyBtn" class="btn btn-primary" aria-pressed="false">READY</button>
+    </footer>
+
+    <div class="crt" aria-hidden="true"></div>
+
+    <script>
+    const ROOM_ID = "battleroom4";
+    </script>
+    <script src="../js/hud.js" defer></script>
+    <script type="module" src="../js/battleroom.js"></script>
+    
+</body>
+</html>

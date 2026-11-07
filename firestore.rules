@@ -1,0 +1,225 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===== 공통 인증 =====
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(uid) {
+      return signedIn() && request.auth.uid == uid;
+    }
+
+    function userPath(uid) {
+      return /databases/$(database)/documents/users/$(uid);
+    }
+
+    function isGM() {
+      return signedIn()
+        && get(userPath(request.auth.uid)).data.get('role', '') == 'gm';
+    }
+
+    // ===== 로비에서 변경 가능한 필드 =====
+
+    function onlyLobbyKeys() {
+      return request.resource.data.diff(resource.data)
+        .affectedKeys().hasOnly([
+          'player1_uid', 'player1_name', 'player1_ready',
+          'player2_uid', 'player2_name', 'player2_ready',
+          'player3_uid', 'player3_name', 'player3_ready',
+          'player4_uid', 'player4_name', 'player4_ready',
+          'spectators', 'spectator_names',
+          'swap_request',
+          'intro_ready_p1', 'intro_ready_p2',
+          'intro_ready_p3', 'intro_ready_p4',
+          'intro_done'
+        ]);
+    }
+
+    // ===== 유저 데이터 =====
+    // nickname / entry / role 은 관리자(users/upload.js, 서비스 계정)만 쓴다. 서비스 계정은 규칙을 거치지 않음.
+    // 본인은 프로필 화면에서 바꾸는 cardSlots, profileImage 만 쓸 수 있다.
+
+    match /users/{uid} {
+
+      allow read: if isOwner(uid) || isGM();
+
+      allow create: if isOwner(uid)
+        && request.resource.data.keys().hasOnly(['cardSlots', 'profileImage']);
+
+      allow update: if isOwner(uid)
+        && request.resource.data.diff(resource.data)
+          .affectedKeys().hasOnly(['cardSlots', 'profileImage']);
+
+      allow delete: if false;
+    }
+
+    // ===== 공개 트레이너 프로필 =====
+    // users 문서의 복사본. nickname / entry 는 users 문서와 같을 때만 쓸 수 있어 조작 불가.
+
+    function matchesUserDoc(uid) {
+      return (
+        exists(userPath(uid))
+        && request.resource.data.nickname == get(userPath(uid)).data.get('nickname', null)
+        && request.resource.data.entry == get(userPath(uid)).data.get('entry', [])
+      ) || (
+        !exists(userPath(uid))
+        && request.resource.data.nickname == null
+        && request.resource.data.entry.size() == 0
+      );
+    }
+
+    match /profiles/{uid} {
+
+      allow read: if signedIn();
+
+      allow create, update: if isOwner(uid)
+        && request.resource.data.keys().hasOnly([
+          'nickname',
+          'profileImage',
+          'cardSlots',
+          'entry',
+          'updatedAt'
+        ])
+        && matchesUserDoc(uid);
+
+      allow delete: if false;
+    }
+
+    // ===== 배틀룸 =====
+
+    match /rooms/{roomId} {
+
+      allow read: if signedIn();
+
+      allow create, delete: if isGM();
+
+      allow update: if isGM()
+        || (signedIn() && onlyLobbyKeys());
+
+      // ===== 플레이어 행동 요청 =====
+      // 본인 요청만 읽을 수 있으므로, 싱글배틀에서 고른 기술(choose)은 상대에게 보이지 않는다.
+
+      match /actions/{actionId} {
+
+        allow read: if isGM()
+          || (
+            signedIn()
+            && resource.data.uid == request.auth.uid
+          );
+
+        allow create: if signedIn()
+          && request.resource.data.uid == request.auth.uid
+          && request.resource.data.status == 'pending'
+          && request.resource.data.type in [
+            'init',
+            'move',
+            'choose',
+            'switch',
+            'leave',
+            'select',
+            'unselect',
+            'timeout'
+          ]
+          && request.resource.data.keys().hasOnly([
+            'uid',
+            'type',
+            'payload',
+            'round_no',
+            'status',
+            'createdAt'
+          ]);
+
+        allow update, delete: if isGM();
+      }
+
+      // ===== 더블배틀 채팅 =====
+
+      match /chats/{channel}/messages/{msgId} {
+
+        function roomData() {
+          return get(
+            /databases/$(database)/documents/rooms/$(roomId)
+          ).data;
+        }
+
+        function isSpectator() {
+          return signedIn()
+            && request.auth.uid in
+              roomData().get('spectators', []);
+        }
+
+        function isTeamMember(team) {
+          return signedIn() && (
+            (
+              team == 't1'
+              && (
+                roomData().get('player1_uid', '') == request.auth.uid
+                || roomData().get('player2_uid', '') == request.auth.uid
+              )
+            )
+            ||
+            (
+              team == 't2'
+              && (
+                roomData().get('player3_uid', '') == request.auth.uid
+                || roomData().get('player4_uid', '') == request.auth.uid
+              )
+            )
+          );
+        }
+
+        function canWrite() {
+          return (
+            channel in ['t1', 't2']
+            && isTeamMember(channel)
+          )
+          || (
+            channel == 'spectator'
+            && isSpectator()
+          );
+        }
+
+        allow read: if isGM()
+          || (
+            signedIn()
+            && (
+              canWrite()
+              || (
+                isSpectator()
+                && channel in [
+                  't1',
+                  't2',
+                  'spectator'
+                ]
+              )
+            )
+          );
+
+        allow create: if signedIn()
+          && canWrite()
+          && request.resource.data.keys().hasOnly([
+            'uid',
+            'name',
+            'text',
+            'gameId',
+            'createdAt'
+          ])
+          && request.resource.data.uid == request.auth.uid
+          && request.resource.data.name is string
+          && request.resource.data.name.size() <= 20
+          && request.resource.data.text is string
+          && request.resource.data.text.size() > 0
+          && request.resource.data.text.size() <= 200
+          && request.resource.data.createdAt == request.time;
+
+        allow update: if false;
+
+        allow delete: if isGM();
+      }
+    }
+  }
+}

@@ -86,15 +86,14 @@ export function applyStatus(pokemon, statusName, currentTurn) {
 
 // 상태변화 부여 시도. 같은 종류의 상태변화가 이미 있으면 변화 없이 그대로 반환.
 // 다른 종류의 상태변화는 서로 중첩되어 동시에 걸릴 수 있음 (status와도 별개로 동시 보유 가능).
-// rand: 난수 함수 (탐사 배틀처럼 seed로 재현해야 하는 곳에서 넘김, 기본은 Math.random)
-export function applyVolatile(pokemon, volatileName, rand = Math.random) {
+export function applyVolatile(pokemon, volatileName) {
   if (!VOLATILE_LIST.includes(volatileName)) return pokemon;
   if (pokemon.volatiles?.[volatileName]) return pokemon; // 같은 상태변화 중복 적용 불가
 
   let volatileData = {};
   if (volatileName === "혼란") {
     // 3~5턴 지속
-    volatileData = { duration: 3 + Math.floor(rand() * 3), turnCount: 0 };
+    volatileData = { duration: 3 + Math.floor(Math.random() * 3), turnCount: 0 };
   }
   return { ...pokemon, volatiles: { ...pokemon.volatiles, [volatileName]: volatileData } };
 }
@@ -142,10 +141,10 @@ function freezeReleaseChance(freezeTurn) {
 
 // 기술을 선택한 직후 호출. 얼음/마비/풀죽음으로 행동 불가능한지 체크.
 // 반환: { canAct: boolean, pokemon: 갱신된 포켓몬, message }
-export function checkActionPrevented(pokemon, rand = Math.random) {
+export function checkActionPrevented(pokemon) {
   if (pokemon.status === "얼음") {
     const freezeTurn = (pokemon.statusData?.freezeTurn ?? 0) + 1;
-    const released = rand() < freezeReleaseChance(freezeTurn);
+    const released = Math.random() < freezeReleaseChance(freezeTurn);
     
     if (released) {
       return {
@@ -162,7 +161,7 @@ export function checkActionPrevented(pokemon, rand = Math.random) {
   }
 
   if (pokemon.status === "마비") {
-    const paralyzed = rand() < 0.25;
+    const paralyzed = Math.random() < 0.25;
     if (paralyzed) {
       return {
         canAct: false,
@@ -188,7 +187,7 @@ export function checkActionPrevented(pokemon, rand = Math.random) {
 // checkActionPrevented에서 canAct: true가 나온 후, 혼란이면 한 번 더 체크.
 // 33% 확률로 기술이 취소되고 자기 자신을 (atk * 2) 고정 데미지로 공격함.
 // 반환: { confused: boolean, pokemon: 갱신된 포켓몬, selfDamage, message }
-export function checkConfusionInterrupt(pokemon, rand = Math.random) {
+export function checkConfusionInterrupt(pokemon) {
   const confusionData = pokemon.volatiles?.["혼란"];
   if (!confusionData) {
     return { confused: false, pokemon, selfDamage: 0, message: null };
@@ -199,7 +198,7 @@ export function checkConfusionInterrupt(pokemon, rand = Math.random) {
 
   // 지속 턴 종료 또는 3턴째부터 33.3% 확률로 회복
   const durationOver = turnCount >= duration;
-  const recovered = !durationOver && turnCount >= 3 && rand() < 1 / 3;
+  const recovered = !durationOver && turnCount >= 3 && Math.random() < 1 / 3;
 
   if (durationOver || recovered) {
     return {
@@ -215,7 +214,7 @@ export function checkConfusionInterrupt(pokemon, rand = Math.random) {
     volatiles: { ...pokemon.volatiles, "혼란": { ...confusionData, turnCount } },
   };
   
-  if (rand() < 0.15) {
+  if (Math.random() < 0.15) {
     const selfDamage = (pokemon.atk ?? 0) * 2;
     const newHp = Math.max(0, pokemon.hp - selfDamage);
     return {

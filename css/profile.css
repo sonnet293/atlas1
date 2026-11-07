@@ -1,0 +1,331 @@
+.back-link { margin-left: 0.4em; }
+html.embed .topbar { display: none; }
+
+.trainer-card {
+  display: grid;
+  grid-template-columns: minmax(0, 4fr) minmax(0, 6fr);
+  gap: clamp(14px, 2.4vw, 26px);
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: clamp(20px, 4vh, 48px) var(--pad) calc(40px + env(safe-area-inset-bottom));
+}
+html.embed .trainer-card { padding: 16px; }
+html.embed .party-heading { padding-right: 44px; } /* 팝업 닫기 버튼 자리 */
+
+.card-left,
+.card-right {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: clamp(16px, 2.4vw, 24px);
+  animation: boot-in 0.5s ease-out both;
+}
+.card-right { animation-delay: 0.12s; }
+
+/* ── 좌측: 사진 + 이름 ───────────────────────── */
+.card-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--dim);
+  font-size: 0.72em;
+  letter-spacing: 0.3em;
+}
+.card-label::before { content: "// "; }
+.card-label::after { content: "ID-03"; letter-spacing: 0.14em; }
+
+.avatar {
+  position: relative;
+  display: block;
+  aspect-ratio: 1;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  background:
+    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.035) 0 1px, transparent 1px 20px),
+    repeating-linear-gradient(rgba(255, 255, 255, 0.035) 0 1px, transparent 1px 20px),
+    #050505;
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+.avatar:hover,
+.avatar:focus-visible { border-color: var(--accent-line); outline: none; }
+.avatar img { display: block; width: 100%; height: 100%; object-fit: cover; }
+
+/* 사진 위를 천천히 지나가는 스캔 라인 */
+.avatar::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(to bottom, transparent 47%, rgba(255, 255, 255, 0.08) 50%, transparent 53%);
+  animation: scan 5s linear infinite;
+}
+
+.avatar-placeholder {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 8px;
+  padding: 16px;
+  color: var(--dim);
+  text-align: center;
+}
+.avatar-symbol {
+  display: grid;
+  place-items: center;
+  width: 2.4em;
+  height: 2.4em;
+  margin-bottom: 4px;
+  border: 1px dashed var(--line);
+  color: var(--fg);
+  font-size: 1.6em;
+  line-height: 1;
+}
+.avatar-placeholder strong { color: var(--fg); letter-spacing: 0.08em; }
+.avatar-placeholder span:last-child { font-size: 0.8em; }
+
+.avatar-edit {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  z-index: 1;
+  padding: 0.2em 0.6em;
+  border: 1px solid var(--fg);
+  background: #000;
+  font-size: 0.72em;
+  letter-spacing: 0.1em;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.avatar:hover .avatar-edit,
+.avatar:focus-visible .avatar-edit { opacity: 1; }
+@media (hover: none) { .avatar-edit { opacity: 0.85; } }
+
+.avatar-uploading {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  background: rgba(0, 0, 0, 0.78);
+  letter-spacing: 0.2em;
+  animation: blink 1s steps(1) infinite;
+}
+
+body.readonly .avatar { cursor: default; }
+body.readonly .avatar:hover { border-color: var(--line); }
+body.readonly .avatar-edit { display: none; }
+
+.trainer-identity { padding-top: 12px; border-top: 1px dashed var(--faint); }
+.trainer-caption { color: var(--dim); font-size: 0.68em; letter-spacing: 0.3em; }
+.trainer-name { margin-top: 2px; font-size: clamp(1.4em, 3.2vw, 2em); overflow-wrap: anywhere; }
+
+.card-message { margin: 0; font-size: 0.82em; }
+.card-message:empty { display: none; }
+.card-message::before {
+  content: "[SYS]";
+  margin-right: 0.5em;
+  padding: 0 0.3em;
+  background: var(--fg);
+  color: var(--bg);
+  text-shadow: none;
+}
+
+/* ── 우측: 파트너 6칸 ───────────────────────── */
+.party-heading {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--faint);
+}
+.party-heading h2 { margin-top: 2px; font-size: 1.5em; letter-spacing: 0.22em; }
+.party-count { padding: 0.15em 0.7em; border: 1px solid var(--line); font-size: 0.8em; letter-spacing: 0.1em; }
+
+.party-grid {
+  flex: 1;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.slot {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 170px;
+  padding: 28px 10px 14px;
+  border: 1px solid var(--faint);
+  background: var(--glass);
+  color: var(--fg);
+  font: inherit;
+  text-align: center;
+  text-shadow: inherit;
+  transition: border-color 0.15s, background 0.15s;
+  animation: boot-in 0.4s ease-out both;
+}
+.slot:nth-child(2) { animation-delay: 0.05s; }
+.slot:nth-child(3) { animation-delay: 0.1s; }
+.slot:nth-child(4) { animation-delay: 0.15s; }
+.slot:nth-child(5) { animation-delay: 0.2s; }
+.slot:nth-child(6) { animation-delay: 0.25s; }
+
+.slot-no { position: absolute; top: 6px; left: 8px; color: var(--dim); font-size: 0.68em; letter-spacing: 0.1em; }
+.slot-badge {
+  position: absolute;
+  top: 7px;
+  right: 8px;
+  padding: 0 0.45em;
+  background: var(--accent);
+  color: var(--bg);
+  font-size: 0.62em;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-shadow: none;
+}
+.slot.entry { border-color: var(--accent-line); box-shadow: inset 0 0 30px var(--accent-soft); }
+
+.sprite-wrap {
+  display: grid;
+  place-items: center;
+  width: clamp(64px, 9vw, 96px);
+  aspect-ratio: 1;
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.08), transparent 65%);
+}
+.sprite { width: 100%; height: 100%; object-fit: contain; image-rendering: pixelated; }
+.sprite.portrait { object-fit: cover; image-rendering: auto; }
+
+.slot-name { font-size: 0.9em; font-weight: 700; overflow-wrap: anywhere; }
+.slot-types { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px; }
+.type-chip { padding: 0 0.5em; border: 1px solid var(--line); color: var(--dim); font-size: 0.66em; letter-spacing: 0.04em; }
+
+/* 내 카드: 칸 전체가 변경 버튼 */
+.slot-edit { position: absolute; inset: 0; z-index: 1; padding: 0; border: 0; background: none; cursor: pointer; }
+.slot.custom:not(.readonly):hover { border-color: var(--accent-line); background: var(--accent-soft); }
+
+.slot-remove {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid var(--line);
+  background: #000;
+  font-size: 0.75em;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s, border-color 0.15s;
+}
+.slot:hover .slot-remove,
+.slot-remove:focus-visible { opacity: 1; }
+.slot-remove:hover { border-color: var(--fg); }
+@media (hover: none) { .slot-remove { opacity: 1; } }
+
+.slot.empty { border-style: dashed; border-color: var(--line); color: var(--dim); font-size: 0.85em; }
+button.slot.empty { cursor: pointer; }
+button.slot.empty:hover { border-color: var(--accent-line); background: var(--accent-soft); color: var(--accent); }
+.slot-plus { font-size: 2em; font-weight: 400; line-height: 1; }
+
+/* ── 포켓몬 검색 모달 ───────────────────────── */
+.search-dialog {
+  width: min(580px, calc(100vw - 24px));
+  max-width: none;
+  max-height: min(660px, calc(100dvh - 48px));
+  padding: 0;
+  border: 1px solid var(--line);
+  background: #000;
+}
+.search-dialog[open] { display: flex; flex-direction: column; animation: rise 0.3s ease-out; }
+
+.search-intro { padding: 18px 18px 6px; }
+.search-intro h2 { margin-top: 4px; font-size: 1.2em; }
+
+.search-head { display: flex; gap: 8px; margin: 0; padding: 8px 18px 14px; border-bottom: 1px solid var(--faint); }
+#search-input {
+  flex: 1;
+  min-width: 0;
+  height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 0;
+  outline: none;
+  background: #050505;
+  color: var(--fg);
+  caret-color: var(--fg);
+  font: inherit;
+  font-size: 16px; /* iOS 자동 확대 방지 */
+}
+#search-input:focus { border-color: var(--fg); }
+#search-input::placeholder { color: var(--dim); }
+.search-close {
+  flex: none;
+  width: 44px;
+  height: 44px;
+  border: 1px solid var(--line);
+  background: none;
+  cursor: pointer;
+}
+.search-close:hover { border-color: var(--fg); }
+
+.search-results {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  align-content: start;
+  gap: 6px;
+  padding: 10px 12px 14px;
+  overflow-y: auto;
+}
+.result {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr);
+  column-gap: 8px;
+  align-items: center;
+  padding: 6px 8px;
+  border: 1px solid var(--faint);
+  background: none;
+  text-align: left;
+  text-shadow: inherit;
+  cursor: pointer;
+}
+.result:hover,
+.result:focus-visible { border-color: var(--accent-line); background: var(--accent-soft); outline: none; }
+.result .sprite { grid-row: span 2; width: 48px; height: 48px; }
+.result span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.88em; }
+.result small { color: var(--dim); font-size: 0.7em; }
+.hint { grid-column: 1 / -1; margin: 12px 6px; color: var(--dim); font-size: 0.85em; }
+.hint::before { content: "> "; }
+
+/* ── 반응형 ───────────────────────── */
+@media (max-width: 820px) {
+  .trainer-card { grid-template-columns: minmax(0, 1fr); }
+
+  /* 사진 왼쪽, 이름 오른쪽 */
+  .card-left {
+    display: grid;
+    grid-template-columns: minmax(110px, 200px) minmax(0, 1fr);
+    align-items: end;
+    gap: 12px 18px;
+  }
+  .card-label { grid-column: 1 / -1; }
+  .avatar { grid-row: 2 / span 2; }
+  .trainer-identity { grid-column: 2; border-top: 0; padding-top: 0; }
+  .card-message { grid-column: 2; align-self: start; }
+}
+
+@media (max-width: 480px) {
+  .card-left { grid-template-columns: 110px minmax(0, 1fr); }
+  .avatar-placeholder strong,
+  .avatar-placeholder span:last-child { display: none; }
+  .party-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .slot { min-height: 150px; }
+}

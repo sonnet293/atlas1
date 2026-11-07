@@ -34,7 +34,16 @@ export function getTypeMultiplier(moveType, defenderType) {
 }
 
 // 포켓몬 데이터의 타입을 배열로 통일 (엔트리에 따라 types 또는 type 필드, 문자열 하나일 수도 있음)
+// 날개쉬기(roost) 효과 중이면 비행 타입은 빠짐 (비행 단일 타입이면 노말 타입이 됨)
 export function pokemonTypes(pokemon) {
+    const types = originalTypes(pokemon);
+    if (!pokemon?.roost) return types;
+    const rest = types.filter((t) => t !== "비행");
+    return rest.length ? rest : ["노말"];
+}
+
+// 날개쉬기 등 일시적인 변화를 무시한 원래 타입
+export function originalTypes(pokemon) {
     const t = pokemon?.types ?? pokemon?.type;
     if (Array.isArray(t)) return t;
     return t ? [t] : [];

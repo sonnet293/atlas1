@@ -1,19 +1,62 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>로그인</title>
-  <link rel="stylesheet" href="css/style.css">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content" />
+  <meta name="theme-color" content="#000000" />
+  <title>PROJECT : VOYAGER // ACCESS</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Nanum+Gothic+Coding:wght@400;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/style.css" />
+  <link rel="stylesheet" href="css/login.css" />
 </head>
 <body>
-  <h1>방치형 포켓몬 탐사</h1>
-  <form id="loginForm">
-    <p><input type="email" id="email" placeholder="이메일" required autocomplete="username"></p>
-    <p><input type="password" id="password" placeholder="비밀번호" required autocomplete="current-password"></p>
-    <p><button type="submit">로그인</button></p>
-    <p id="msg" class="error"></p>
-  </form>
+  <header class="topbar">
+    <span><b>VOYAGER</b><span class="hide-sm"> // NODE 03</span></span>
+    <span class="grow"></span>
+    <span class="skip" id="skip">
+      <span class="on-key">[ PRESS ANY KEY TO SKIP ]</span><span class="on-touch">[ TAP TO SKIP ]</span>
+    </span>
+    <span><i class="led blink" id="link-led"></i><span class="hide-sm" id="link-state">STANDBY</span></span>
+    <span class="hide-sm">SID <b id="sid">----</b></span>
+    <span><span class="hide-sm">UTC </span><b id="clock">--:--:--</b></span>
+  </header>
+
+  <main class="screen" id="screen">
+    <div class="term">
+      <div id="log"></div>
+
+      <form id="auth-form" class="auth" autocomplete="on" novalidate>
+        <div class="field" id="field-email" hidden>
+          <label class="field-label" for="email">E-MAIL</label>
+          <div class="prompt">
+            <span class="ps">&gt;</span><span id="email-mirror"></span><span class="cur"></span>
+            <input id="email" name="email" type="text" inputmode="email" autocomplete="username"
+                   autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="next" />
+          </div>
+          <div class="field-err" id="email-err" role="alert"></div>
+        </div>
+
+        <div class="field" id="field-password" hidden>
+          <label class="field-label" for="password">PASSWORD</label>
+          <div class="prompt">
+            <span class="ps">&gt;</span><span id="password-mirror"></span><span class="cur"></span>
+            <input id="password" name="password" type="password" autocomplete="current-password" enterkeyhint="go" />
+          </div>
+          <div class="field-err" id="password-err" role="alert"></div>
+        </div>
+
+        <button type="submit" class="sr-only" tabindex="-1">CONNECT</button>
+      </form>
+    </div>
+  </main>
+
+  <div class="crt" aria-hidden="true"></div>
+
+  <noscript>
+    <p style="padding:80px 24px">[ERR] JavaScript is required to access the VOYAGER terminal.</p>
+  </noscript>
 
   <script type="module" src="js/login.js"></script>
 </body>

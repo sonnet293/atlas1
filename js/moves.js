@@ -96,6 +96,7 @@ export const MOVES = {
                       rank: { chance:0.5, atk: 1, turns: 3 } },
   "불꽃튀기기":     { power: 40, type: "불", accuracy: 100, alwaysHit: false, effect: null, sparks: true  },
   "화염방사":       { power: 60, type: "불", accuracy: 100, alwaysHit: false, effect: { chance: 0.1, status: "화상" } },
+  "분화":           { power: 70, type: "불", accuracy: 100, alwaysHit: false, effect: null, eruption: true },
   "회오리불꽃":     { power: 35, type: "불", accuracy: 85,  alwaysHit: false, effect: null, trap: true },
   "열사의대지":     { power: 50, type: "땅", accuracy: 100, alwaysHit: false, effect: { chance: 0.3, status: "화상" } },
   "플레어드라이브": { power: 70, type: "불", accuracy: 100, alwaysHit: false, effect: { recoil: 0.33, chance: 0.1, status: "화상" } },
@@ -291,7 +292,7 @@ export const MOVES = {
   "폭풍":       { power: 60, type: "비행", accuracy: 70,  alwaysHit: false, effect: { chance: 0.3, volatile: "혼란" },
                   weatherAlwaysHit: ["비"], weatherAccuracy: { "쾌청": 50 } },
   "날개쉬기": { power: 0, type: "비행", accuracy: 100, alwaysHit: true,
-              effect: { removeFlying: true, heal: 0.22 }, targetSelf: true },
+              effect: { removeFlying: true, heal: 0.35 }, targetSelf: true },
   "수다":   { power: 50, type: "비행", accuracy: 100, alwaysHit: false, effect: { chance: 1, volatile: "혼란" } },
 
   // ───── 에스퍼 ─────

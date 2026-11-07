@@ -13,8 +13,9 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 import { MOVES } from "./moves.js";
 import { formatPokemonName } from "./effecthandler.js";
-import { displayName, isMoveLocked, isRecharging } from "./engine.js";
+import { displayName, isMoveLocked, isRecharging, isChoosePhase } from "./engine.js";
 import { vacateSeat } from "./roomLeave.js";
+import { portraitUrl } from "./portrait.js";
 
 const roomRef = doc(db, "rooms", ROOM_ID);
 const actionsRef = collection(roomRef, "actions");
@@ -31,7 +32,7 @@ const TYPE_COLORS = {
 };
 
 // battleroom에 인트로 오버레이가 있는 페이지에서는, 인트로(양쪽 터치 + VS 연출)가 끝나기 전까지
-// 첫 라운드(주사위 굴리기)를 시작하지 않는다. intro.js가 끝나면 "battle:introDone"을 쏴준다.
+// 첫 라운드(행동 선택 단계)를 시작하지 않는다. intro.js가 끝나면 "battle:introDone"을 쏴준다.
 const hasIntro = !!document.getElementById("intro-overlay");
 let introReady = !hasIntro;
 let latestRoomForInit = null;
@@ -47,12 +48,9 @@ let myUid = null;
 let mySlot = null;
 let latestRoom = null;
 let roundInitInFlight = false;
-let lastAnimatedRound = 0;
-let isAnimating = false;
-let diceRolling = false;
-let pendingDiceRoll = null;
 let actionInFlight = false;
-let pendingFirstMoveLog = null; // 다이스 롤이 끝난 뒤에야 재생할 "~의 선공!" 로그 줄
+// 이번 라운드에 내가 고른 행동 (화면 표시용). { round, moveIdx?, text }
+let myChoice = null;
 
 const DICE_SOUND_URL = "https://slippery-copper-mzpmcmc2ra.edgeone.app/soundreality-bicycle-bell-155622.mp3";
 const diceSound = new Audio(DICE_SOUND_URL);
@@ -118,16 +116,30 @@ function sendAction(type, payload = {}) {
   });
 }
 
+// 지난 라운드 로그/연출(다이스 포함)이 아직 재생 중인지
+function boardPlaying() {
+  return boardBusy || boardQueue.length > 0;
+}
+
+// 지금 내가 이번 라운드 행동(기술/교체)을 고를 수 있는지
+function canChoose(room) {
+  const myKey = slotKey(mySlot);
+  return !!myKey && isChoosePhase(room) && !room[`${myKey}_round_action`] && !actionInFlight && !boardPlaying();
+}
+
 // 기술/교체 요청 공통 처리: 요청 중에는 버튼을 잠그고, 끝나면 최신 상태로 다시 그림
-async function requestTurnAction(type, payload) {
-  if (!slotKey(mySlot) || isAnimating || actionInFlight) return;
+async function requestTurnAction(type, payload, choiceInfo = null) {
+  if (!slotKey(mySlot) || boardPlaying() || actionInFlight) return;
   actionInFlight = true;
+  const round = latestRoom?.round_no ?? 0;
+  if (choiceInfo) myChoice = { round, ...choiceInfo };
   if (latestRoom) renderTurnUI(latestRoom);
   try {
-    await sendAction(type, payload);
+    const result = await sendAction(type, payload);
+    if (choiceInfo && result.status !== "done" && myChoice?.round === round) myChoice = null;
   } finally {
     actionInFlight = false;
-    if (latestRoom && !isAnimating) renderTurnUI(latestRoom);
+    if (latestRoom) renderTurnUI(latestRoom);
   }
 }
 
@@ -144,63 +156,16 @@ function listenBattle() {
     latestRoom = room;
 
     mySlot = isSpectatorView ? "spectator" : calcMySlot(room);
+    if (myChoice && myChoice.round !== (room.round_no ?? 0)) myChoice = null; // 라운드가 넘어가면 선택 표시 초기화
 
-    const roundNo = room.round_no ?? 0;
-    const isNewRound = !!room.battle_turn && roundNo !== lastAnimatedRound;
-
-    renderBoard(room, isNewRound);
+    renderBoard(room);
     latestRoomForInit = room;
     maybeInitRound(room);
-
-    if (isNewRound) {
-      if (!isAnimating) {
-        isAnimating = true;
-        renderTurnUI(room);
-      }
-      // 이전 라운드의 로그/연출 큐가 다 끝난 뒤에 굴리도록 일단 대기시켜둠
-      const { mineKey, enemyKey } = perspectiveKeys();
-      pendingDiceRoll = { roundNo, mineRoll: room[`${mineKey}_roll`], enemyRoll: room[`${enemyKey}_roll`], room };
-      tryStartPendingDiceRoll();
-    } else if (!isAnimating) {
-      afterDiceSettled(room);
-    }
+    renderTurnUI(room);
   });
 }
 
-// 이전 라운드의 로그 타이핑/피격 연출 큐가 완전히 빌 때까지는 다이스를 굴리지 않음.
-// processBoardQueue가 큐를 다 비울 때마다도 호출해서, 마지막 로그 줄 연출이 끝나자마자 이어서 굴림.
-function tryStartPendingDiceRoll() {
-  if (!pendingDiceRoll || diceRolling) return;
-  if (boardBusy || boardQueue.length > 0) return; // 아직 이전 라운드 연출 재생 중
-
-  const { roundNo, mineRoll, enemyRoll, room } = pendingDiceRoll;
-  pendingDiceRoll = null;
-  diceRolling = true;
-  // document.getElementById("turn-indicator").innerText = "주사위 굴리는 중...";
-  playDiceRoll(mineRoll, enemyRoll).then(() => {
-    diceRolling = false;
-    isAnimating = false;
-    lastAnimatedRound = roundNo;
-    afterDiceSettled(room);
-    flushPendingFirstMoveLog();
-  });
-}
-
-// 다이스 결과가 확정된 뒤에야 보류해뒀던 "~의 선공!" 로그 줄을 재생
-function flushPendingFirstMoveLog() {
-  if (!pendingFirstMoveLog) return;
-  const { text } = pendingFirstMoveLog;
-  pendingFirstMoveLog = null;
-  boardQueue.push({ kind: "log", text });
-  processBoardQueue();
-}
-
-// 다이스(선공 결정)가 끝난 뒤 화면을 갱신
-function afterDiceSettled(room) {
-  renderTurnUI(room);
-}
-
-// 게임이 막 시작됐는데 아직 선공이 안 정해졌으면 player1이 GM에게 첫 라운드 세팅을 요청.
+// 게임이 막 시작됐는데 아직 첫 라운드가 세팅되지 않았으면 player1이 GM에게 첫 라운드 세팅을 요청.
 // round_no로 판단(battle_turn만 보면 강제교체 대기 중의 null 상태와 구분이 안 돼서 재시작 취급될 수 있음).
 async function maybeInitRound(room) {
   if (!introReady) return;
@@ -212,18 +177,26 @@ async function maybeInitRound(room) {
   await sendAction("init");
 }
 
-// switchIdx: 유턴류 기술로 공격 후 교체해 들어갈 벤치 번호 (공격+교체를 한 요청으로 보냄)
+// 이번 라운드 기술 선택. switchIdx: 유턴류 기술로 공격 후 교체해 들어갈 벤치 번호 (공격+교체를 한 번에 고름)
+// 고른 내용은 GM만 보고, 양쪽이 다 고르면 GM이 다이스로 순서를 정해 실행한다.
 function useMove(moveIdx, switchIdx = null) {
   uTurnPick = null;
-  return requestTurnAction("move", switchIdx === null ? { moveIdx } : { moveIdx, switchIdx });
+  const myKey = slotKey(mySlot);
+  const pkmn = latestRoom?.[`${myKey}_entry`]?.[latestRoom?.[`${myKey}_active_idx`] ?? 0];
+  const moveName = pkmn?.moves?.[moveIdx]?.name ?? "기술";
+  const payload = switchIdx === null ? { kind: "move", moveIdx } : { kind: "move", moveIdx, switchIdx };
+  return requestTurnAction("choose", payload, { moveIdx, text: moveName });
 }
 
 // 유턴류 기술 버튼을 누른 뒤 교체할 벤치를 고르는 중이면 그 기술 번호, 아니면 null
 let uTurnPick = null;
 
-// 벤치 포켓몬 교체 요청. 강제/자발적 교체 구분과 턴 소모는 GM(engine.switchPokemon)이 판단한다.
+// 벤치 포켓몬 교체. 쓰러져서 하는 교체는 바로 실행("switch"), 자발적 교체는 이번 라운드 행동으로 고름("choose").
 function switchPokemon(targetIdx) {
-  return requestTurnAction("switch", { targetIdx });
+  const myKey = slotKey(mySlot);
+  if (latestRoom?.[`${myKey}_pending_switch`]) return requestTurnAction("switch", { targetIdx });
+  const name = latestRoom?.[`${myKey}_entry`]?.[targetIdx]?.name ?? "포켓몬";
+  return requestTurnAction("choose", { kind: "switch", targetIdx }, { text: `${name}(으)로 교체` });
 }
 
 // 전투 종료 후 LEAVE 버튼 클릭 시: GM이 내 슬롯을 비우고 전투 필드를 초기화하면 메인으로 이동.
@@ -260,7 +233,7 @@ function renderLeaveButton(room) {
   };
 }
 
-function renderBoard(room, isNewRound = false) {
+function renderBoard(room) {
   const { mineKey, enemyKey } = perspectiveKeys();
   const myKey = slotKey(mySlot);
 
@@ -272,13 +245,13 @@ function renderBoard(room, isNewRound = false) {
   document.getElementById("dice-mine-name").innerText = mineLabel;
   document.getElementById("dice-enemy-name").innerText = enemyLabel;
 
-  renderLogAndBoard(room, isNewRound);
+  renderLogAndBoard(room);
   renderResult(room);
   renderLeaveButton(room);
 }
 
 function renderTurnUI(room) {
-  if (room.battle_turn !== slotKey(mySlot) || room.battle_winner) uTurnPick = null; // 내 턴이 끝나면 유턴 선택 취소
+  if (!canChoose(room)) uTurnPick = null; // 고를 수 없는 상태가 되면 유턴 교체 대상 선택 취소
   renderTurn(room);
   if (uTurnPick !== null) document.getElementById("turn-indicator").innerText = "유턴 후 교체할 포켓몬을 선택!";
   renderMoveButtons(room);
@@ -306,7 +279,7 @@ function updatePortrait(prefix, pokemon, animate = false) {
   }
   if (placeholder) placeholder.style.display = "none";
   img.classList.remove("visible", "slide-in-mine", "slide-in-enemy");
-  img.style.display = "block"; img.src = pokemon.portrait; img.alt = pokemon.name;
+  img.style.display = "block"; img.src = portraitUrl(pokemon.portrait); img.alt = pokemon.name;
   setTimeout(() => {
     img.classList.add("visible", ...(animate ? [prefix === "mine" ? "slide-in-mine" : "slide-in-enemy"] : []));
   }, 80);
@@ -386,11 +359,7 @@ function renderMoveButtons(room) {
       continue;
     }
 
-    const canAct =
-      room.battle_turn === myKey &&
-      !room.battle_winner &&
-      !isAnimating &&
-      !actionInFlight;
+    const canAct = canChoose(room);
     // 고스트다이브로 사라진 상태면 그 기술만 누를 수 있음 (다음 턴 강제 공격, PP는 이미 소모됨)
     const diving = myPkmn.ghostDive;
     const locked = isMoveLocked(myPkmn, move.name, room.round_no ?? 0); // 거대해머: 사용 다음 라운드엔 잠김
@@ -399,7 +368,9 @@ function renderMoveButtons(room) {
     const usable = diving ? canAct && diving.moveIdx === i : canAct && (recharging || ((move.pp ?? 0) > 0 && !locked));
 
     const moveData = MOVES[move.name];
-    btn.classList.toggle("uturn-picking", uTurnPick === i);
+    // 유턴 교체 대상 고르는 중이거나, 이번 라운드에 이미 고른 기술이면 강조
+    const chosen = !!room[`${myKey}_round_action`] && myChoice?.round === (room.round_no ?? 0) && myChoice.moveIdx === i;
+    btn.classList.toggle("uturn-picking", uTurnPick === i || chosen);
     btn.style.display = "inline-flex";
     btn.style.backgroundColor = TYPE_COLORS[moveData?.type] ?? "var(--accent)";
     btn.style.opacity = usable ? "1" : "0.45";
@@ -425,7 +396,7 @@ function renderMoveButtons(room) {
   }
 }
 
-// 양쪽 벤치를 렌더링. 클릭 가능한 건 "내 쪽"이고, 교체 대기 중이거나(강제) 내 차례에 자발적 교체가 가능할 때만.
+// 양쪽 벤치를 렌더링. 클릭 가능한 건 "내 쪽"이고, 교체 대기 중이거나(강제) 행동 선택 단계에서 자발적 교체가 가능할 때만.
 // dataKey(p1/p2)는 room 문서에서 데이터를 읽는 키, uiKey(mine/enemy)는 화면에 표시되는 위치.
 function renderBench(room) {
   const { mineKey, enemyKey } = perspectiveKeys();
@@ -443,8 +414,8 @@ function renderBenchSide(dataKey, uiKey, room) {
   const pendingSwitch = !!room[`${dataKey}_pending_switch`];
   const anyonePending = !!room.p1_pending_switch || !!room.p2_pending_switch;
 
-  const canForcedSwitch = myKey === dataKey && pendingSwitch;
-  const canUTurnSwitch = myKey === dataKey && uTurnPick !== null && !isAnimating && !actionInFlight;
+  const canForcedSwitch = myKey === dataKey && pendingSwitch && !actionInFlight;
+  const canUTurnSwitch = myKey === dataKey && uTurnPick !== null && canChoose(room);
   const canVoluntarySwitch =
     myKey === dataKey &&
     !pendingSwitch &&
@@ -452,10 +423,7 @@ function renderBenchSide(dataKey, uiKey, room) {
     !entry[activeIdx]?.ghostDive &&
     !entry[activeIdx]?.trap && // 회오리불꽃류에 갇혀 있으면 자발적 교체 불가
     !isRecharging(entry[activeIdx], room.round_no ?? 0) && // 파괴광선 반동 중엔 교체 불가
-    !room.battle_winner &&
-    !isAnimating &&
-    !actionInFlight &&
-    room.battle_turn === dataKey;
+    canChoose(room);
 
   container.innerHTML = "";
   container.style.flexWrap = "wrap";
@@ -510,7 +478,7 @@ const HIT_ANIM_DELAY_MS = 350; // 로그 타이핑이 끝난 뒤 shake/blink 연
 let renderedLogCount = 0; // 지금까지 큐에 반영한 로그 줄 수
 let renderedEventCount = 0; // 지금까지 큐에 반영한 연출 이벤트 수
 let boardInitialized = false; // 최초 진입/재접속 시엔 연출 없이 즉시 표시
-let boardQueue = []; // { kind: "log", text } | { kind: "hit"|"switch", side, pkmn, idx, hasAttacker? } | { kind: "status", side, status } | { kind: "heal", side, hp }
+let boardQueue = []; // { kind: "dice", mineRoll, enemyRoll } | { kind: "log", text } | { kind: "hit"|"switch", side, pkmn, idx, hasAttacker? } | { kind: "status", side, status } | { kind: "heal", side, hp }
 let boardBusy = false;
 
 function trimLogLines(el) {
@@ -577,7 +545,7 @@ function describeImpact(step) {
 function processBoardQueue() {
   if (boardBusy) return;
   if (boardQueue.length === 0) {
-    tryStartPendingDiceRoll(); // 큐가 방금 다 비었으면, 대기 중이던 다음 라운드 다이스를 굴림
+    if (latestRoom) renderTurnUI(latestRoom); // 연출이 다 끝났으면 다음 라운드 행동 선택 버튼을 활성화
     return;
   }
   boardBusy = true;
@@ -590,6 +558,12 @@ function processBoardQueue() {
 
   if (step.kind === "log") {
     typeLogLine(step.text, next);
+    return;
+  }
+
+  if (step.kind === "dice") {
+    // 양쪽 행동이 다 정해진 뒤 GM이 굴린 선공 다이스. "~의 선공!" 줄 바로 앞에서 재생
+    playDiceRoll(step.mineRoll, step.enemyRoll).then(next);
     return;
   }
 
@@ -642,7 +616,7 @@ function processBoardQueue() {
 
 // room 스냅샷 -> 로그/연출 재생 큐 구성. 최초 렌더는 즉시 전부 표시하고,
 // 그 이후엔 새로 추가된 줄만 한 줄씩, 해당 줄에 달린 연출과 함께 순서대로 재생한다.
-function renderLogAndBoard(room, isNewRound = false) {
+function renderLogAndBoard(room) {
   const el = document.getElementById("battle-log");
   if (!el) return;
 
@@ -657,7 +631,6 @@ function renderLogAndBoard(room, isNewRound = false) {
     boardInitialized = false;
     boardQueue = [];
     boardBusy = false;
-    pendingFirstMoveLog = null;
   }
 
   const { mineKey, enemyKey } = perspectiveKeys();
@@ -670,15 +643,11 @@ function renderLogAndBoard(room, isNewRound = false) {
     // 포켓몬 선택 단계에선 엔트리가 아직 없으므로, 엔트리가 생긴 뒤에 처음 그린다
     if (!room.p1_entry?.length || !room.p2_entry?.length) return;
     // 최초 렌더링(또는 재접속)은 기존 로그/보드를 연출 없이 즉시 표시
-    const holdLast = isNewRound && log.length > 0;
-    const visibleLog = holdLast ? log.slice(0, -1) : log;
-
     el.innerHTML = "";
-    visibleLog.slice(-LOG_MAX_LINES).forEach((line) => appendLogLineInstant(el, line));
+    log.slice(-LOG_MAX_LINES).forEach((line) => appendLogLineInstant(el, line));
     el.scrollTop = el.scrollHeight;
     renderedLogCount = log.length;
     renderedEventCount = events.length;
-    if (holdLast) pendingFirstMoveLog = { text: log[log.length - 1] };
 
     applyPokemonVisual("mine", minePkmn, mineIdx);
     updatePortrait("mine", minePkmn, false);
@@ -699,14 +668,15 @@ function renderLogAndBoard(room, isNewRound = false) {
 
   const sideMap = { [mineKey]: "mine", [enemyKey]: "enemy" };
 
-  // 새 라운드가 시작된 경우, 마지막 줄(항상 "~의 선공!")은 다이스 연출이 끝난 뒤에 재생하도록 보류
-  const holdLastLine = isNewRound && newLines.length > 0;
-  const linesToQueue = holdLastLine ? newLines.slice(0, -1) : newLines;
-
-  linesToQueue.forEach((text, i) => {
+  newLines.forEach((text, i) => {
+    const absoluteIdx = startIdx + i;
+    // 다이스 이벤트는 그 줄("~의 선공!")보다 먼저 재생
+    for (const ev of newEvents) {
+      if (ev.logIndex !== absoluteIdx || ev.type !== "dice") continue;
+      boardQueue.push({ kind: "dice", mineRoll: ev[mineKey], enemyRoll: ev[enemyKey] });
+    }
     boardQueue.push({ kind: "log", text });
 
-    const absoluteIdx = startIdx + i;
     for (const ev of newEvents) {
       if (ev.logIndex !== absoluteIdx) continue;
       const side = sideMap[ev.side];
@@ -729,10 +699,6 @@ function renderLogAndBoard(room, isNewRound = false) {
     }
   });
 
-  if (holdLastLine) {
-    pendingFirstMoveLog = { text: newLines[newLines.length - 1] };
-  }
-
   processBoardQueue();
 }
 
@@ -754,11 +720,31 @@ function renderTurn(room) {
     return;
   }
 
-  if (!room.battle_turn) {
-    el.innerText = "선공 결정 중...";
+  if (!isChoosePhase(room)) {
+    el.innerText = "배틀 준비 중...";
     return;
   }
-  el.innerText = `${displayName(room.battle_turn, room)}의 턴`;
+  if (boardPlaying()) {
+    el.innerText = "";
+    return;
+  }
+
+  const myKey = slotKey(mySlot);
+  if (!myKey) {
+    const done = ["p1", "p2"].filter((s) => room[`${s}_round_action`]).map((s) => displayName(s, room));
+    el.innerText = done.length > 0 ? `행동 선택 중... (${done.join(", ")} 완료)` : "행동 선택 중...";
+    return;
+  }
+  if (room[`${myKey}_round_action`]) {
+    const picked = myChoice?.round === (room.round_no ?? 0) ? `${myChoice.text} 선택 완료! ` : "";
+    el.innerText = `${picked}상대의 선택을 기다리는 중...`;
+    return;
+  }
+  if (actionInFlight) {
+    el.innerText = "선택 전송 중...";
+    return;
+  }
+  el.innerText = "기술을 선택하세요!";
 }
 
 function renderResult(room) {

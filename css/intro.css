@@ -1,0 +1,280 @@
+/* ==========================================================
+   게임 시작 전 인트로 — 고장 난 컴퓨터 화면
+   터치 대기 → 로그 폭주 → 오류 화면 → VS → 화면 꺼지며 배틀 화면
+   ========================================================== */
+
+#intro-overlay,
+#intro-overlay *,
+#intro-overlay *::before,
+#intro-overlay *::after { box-sizing: border-box; }
+
+#intro-overlay {
+  --fg: #ededed;
+  --dim: #7a7a7a;
+  --line: #3a3a3a;
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  overflow: hidden;
+  background: #000;
+  color: var(--fg);
+  font: 400 clamp(11px, 0.4vw + 9.5px, 14px) / 1.6 "JetBrains Mono", "Nanum Gothic Coding", ui-monospace, Menlo, Consolas, monospace;
+  text-shadow: 0 0 0.35em rgba(255, 255, 255, 0.3);
+  -webkit-font-smoothing: antialiased;
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+}
+#intro-overlay.hidden { display: none; }
+#intro-overlay [hidden] { display: none !important; }
+
+/* 노이즈 캔버스 (저해상도를 늘려서 거친 입자) */
+#intro-noise {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  image-rendering: pixelated;
+  opacity: 0.08;
+  pointer-events: none;
+  mix-blend-mode: screen;
+}
+
+/* ── 글리치 대상 화면 ───────────────────────── */
+.ix-screen {
+  --split: 0px;
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: clamp(16px, 5vw, 56px);
+  will-change: transform;
+}
+.ix-screen.ix-invert { filter: invert(1); }
+.ix-screen.ix-rgb .ix-panel {
+  text-shadow:
+    calc(var(--split) * -1) 0 rgba(255, 0, 60, 0.85),
+    var(--split) 0 rgba(0, 220, 255, 0.85);
+}
+/* 찢어진 듯한 반전 띠 */
+.ix-screen.ix-tear::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: var(--tear-y, 50%);
+  height: 9%;
+  background: #fff;
+  mix-blend-mode: difference;
+  transform: translateX(var(--tear-x, 0));
+  pointer-events: none;
+}
+
+.ix-panel { width: 100%; max-width: 72ch; }
+
+/* ── 1. 터치 대기 ───────────────────────── */
+.ix-touch > * { animation: ix-type-in 0.25s steps(2) both; }
+.ix-touch > :nth-child(2) { animation-delay: 0.15s; }
+.ix-touch > :nth-child(3) { animation-delay: 0.3s; }
+.ix-touch > :nth-child(4) { animation-delay: 0.5s; }
+.ix-touch > :nth-child(5) { animation-delay: 0.7s; }
+.ix-touch > :nth-child(6) { animation-delay: 0.95s; }
+.ix-touch > :nth-child(7) { animation-delay: 1.15s; }
+.ix-touch > :nth-child(8) { animation-delay: 1.5s; }
+
+.ix-title { font-size: clamp(1.4em, 4.5vw, 2.4em); font-weight: 700; letter-spacing: 0.12em; line-height: 1.2; }
+.ix-sub { margin-top: 0.3em; color: var(--dim); letter-spacing: 0.2em; font-size: 0.85em; }
+.ix-rule { height: 1px; margin: 1.2em 0; background: var(--line); }
+.ix-line b { color: var(--dim); font-weight: 400; }
+.ix-lead { display: flex; align-items: baseline; gap: 0.5ch; }
+.ix-lead i {
+  flex: 1;
+  min-width: 2ch;
+  height: 1px;
+  border-bottom: 2px dotted var(--dim);
+  transform: translateY(-0.3em);
+}
+
+#touch-prompt {
+  margin-top: 2em;
+  font-size: clamp(1.05em, 3.4vw, 1.5em);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.ix-cur {
+  display: inline-block;
+  width: 0.6em;
+  height: 1.1em;
+  margin-left: 0.25em;
+  vertical-align: text-bottom;
+  background: currentColor;
+  animation: ix-blink 1s steps(1) infinite;
+}
+
+/* ── 2. 로그 폭주 ───────────────────────── */
+.ix-term {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end; /* 넘치는 줄은 위로 밀려나 잘림 */
+  max-width: none;
+  height: 100%;
+  overflow: hidden;
+  font-size: 0.85em;
+  line-height: 1.45;
+  white-space: pre;
+}
+.ix-term div:last-child { color: #fff; }
+
+/* ── 3. 오류 화면 (반전된 화면) ───────────────────────── */
+.ix-error {
+  position: absolute;
+  inset: 0;
+  max-width: none;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 1.1em;
+  padding: clamp(20px, 6vw, 72px);
+  background: #ededed;
+  color: #000;
+  text-shadow: none;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+.ix-error p { margin: 0; max-width: 64ch; }
+.ix-err-code { font-size: 0.85em; }
+.ix-err-title {
+  font-size: clamp(1.3em, 4.6vw, 2.6em);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  line-height: 1.15;
+}
+.ix-err-list { font-weight: 700; }
+.ix-err-dump::after { content: "_"; animation: ix-blink 0.5s steps(1) infinite; }
+
+/* ── 4. VS ───────────────────────── */
+.ix-vs { max-width: 1100px; text-align: center; }
+.ix-vs-tag { color: var(--dim); letter-spacing: 0.2em; font-size: 0.85em; }
+.ix-vs-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: clamp(12px, 3vw, 40px);
+  margin: clamp(24px, 6vh, 56px) 0;
+}
+.vs-side { display: grid; gap: 0.4em; min-width: 0; opacity: 0; }
+.vs-left { text-align: left; }
+.vs-right { text-align: right; }
+.vs-slot { color: var(--dim); font-size: 0.75em; letter-spacing: 0.3em; }
+.vs-name {
+  font-size: clamp(1.4em, 4.6vw, 3em);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  line-height: 1.15;
+  overflow-wrap: anywhere;
+}
+.vs-left.show { animation: ix-slam-left 0.35s cubic-bezier(0.2, 1.4, 0.3, 1) forwards; }
+.vs-right.show { animation: ix-slam-right 0.35s cubic-bezier(0.2, 1.4, 0.3, 1) forwards; }
+
+.vs-label {
+  padding: 0.1em 0.35em;
+  background: var(--fg);
+  color: #000;
+  font-size: clamp(2.4em, 9vw, 6em);
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0.04em;
+  text-shadow: none;
+  box-shadow: 0 0 40px rgba(255, 255, 255, 0.35);
+  transform: scale(0);
+}
+.vs-label.show { animation: ix-impact 0.4s cubic-bezier(0.2, 1.6, 0.3, 1) forwards; }
+
+.ix-vs-foot { color: var(--dim); letter-spacing: 0.24em; font-size: 0.8em; }
+
+/* 상대를 기다리는 동안 */
+#intro-overlay.waiting .ix-vs { opacity: 0.35; transition: opacity 0.6s; }
+
+/* ── 화면 효과 레이어 ───────────────────────── */
+.ix-bars { position: absolute; inset: 0; pointer-events: none; }
+.ix-bars i {
+  display: none;
+  position: absolute;
+  left: -5%;
+  width: 110%;
+  background:
+    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.9) 0 3px, rgba(255, 255, 255, 0.15) 3px 7px, transparent 7px 11px);
+  mix-blend-mode: difference;
+}
+
+.ix-crt {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    repeating-linear-gradient(to bottom, rgba(255, 255, 255, 0.04) 0 1px, transparent 1px 3px),
+    radial-gradient(ellipse at center, transparent 50%, rgba(0, 0, 0, 0.75) 100%);
+  animation: ix-roll 7s linear infinite;
+}
+
+.ix-flash { position: absolute; inset: 0; background: #fff; opacity: 0; pointer-events: none; }
+.ix-flash.show { animation: ix-flash 0.25s ease-out; }
+
+.ix-status {
+  display: none;
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(8vh + env(safe-area-inset-bottom));
+  padding: 0 16px;
+  text-align: center;
+  font-size: clamp(0.95em, 3vw, 1.2em);
+  letter-spacing: 0.08em;
+}
+.ix-status::before { content: "[NET] "; color: var(--dim); }
+.ix-status::after { content: "_"; animation: ix-blink 1s steps(1) infinite; }
+#intro-overlay.waiting .ix-status:not(:empty) { display: block; }
+
+/* ── 화면 꺼짐 → 배틀 화면 ───────────────────────── */
+#intro-overlay.ix-off { background: #fff; animation: ix-tv-off 0.6s cubic-bezier(0.7, 0, 0.3, 1) forwards; }
+#intro-overlay.ix-off > * { opacity: 0; }
+
+/* ── 키프레임 ───────────────────────── */
+@keyframes ix-blink { 50% { opacity: 0; } }
+@keyframes ix-type-in { from { opacity: 0; transform: translateX(-0.6em); } }
+@keyframes ix-flash { 0% { opacity: 1; } 100% { opacity: 0; } }
+@keyframes ix-roll { from { background-position: 0 0, 0 0; } to { background-position: 0 100vh, 0 0; } }
+@keyframes ix-impact {
+  0% { transform: scale(4) rotate(-6deg); opacity: 0; }
+  60% { transform: scale(0.85) rotate(2deg); opacity: 1; }
+  100% { transform: scale(1) rotate(0); opacity: 1; }
+}
+@keyframes ix-slam-left {
+  0% { transform: translateX(-120%) skewX(-20deg); opacity: 0; }
+  80% { transform: translateX(6%) skewX(4deg); opacity: 1; }
+  100% { transform: none; opacity: 1; }
+}
+@keyframes ix-slam-right {
+  0% { transform: translateX(120%) skewX(20deg); opacity: 0; }
+  80% { transform: translateX(-6%) skewX(-4deg); opacity: 1; }
+  100% { transform: none; opacity: 1; }
+}
+@keyframes ix-tv-off {
+  0% { transform: none; }
+  45% { transform: scale(1, 0.004); }
+  75% { transform: scale(0.5, 0.004); opacity: 1; }
+  100% { transform: scale(0, 0.004); opacity: 0; }
+}
+
+/* ── 반응형: 좁은 화면은 위아래로 ───────────────────────── */
+@media (max-width: 600px) {
+  .ix-vs-row { grid-template-columns: minmax(0, 1fr); gap: 18px; }
+  .vs-left, .vs-right { text-align: center; }
+  .vs-label { justify-self: center; }
+  .ix-term { font-size: 0.72em; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ix-crt, .ix-cur { animation: none; }
+}

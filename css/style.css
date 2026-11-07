@@ -1,5 +1,380 @@
-body { font-family: sans-serif; max-width: 720px; margin: 0 auto; padding: 16px; }
-section { border-top: 1px solid #ccc; padding: 8px 0; }
-#sectorList button { margin: 2px; }
-.error { color: red; }
-#logList li { white-space: pre-line; margin-bottom: 6px; }
+/* ==========================================================
+   VOYAGER — 공통 테마 (터미널 + 우주정거장)
+   모든 페이지에서 불러오고, 페이지별 css가 그 위에 덧씌움
+   ========================================================== */
+
+*, *::before, *::after { box-sizing: border-box; }
+
+:root {
+  --bg: #000;
+  --fg: #ededed;
+  --dim: #7a7a7a;
+  --faint: #222;
+  --line: #3a3a3a;
+  --glass: rgba(255, 255, 255, 0.025);
+  --glow: 0 0 0.35em rgba(255, 255, 255, 0.28);
+
+  /* 포인트 색 (앰버 계기판) — '살아 있는 정보'에만 사용 */
+  --accent: #ffb000;
+  --accent-soft: rgba(255, 176, 0, 0.14);
+  --accent-line: rgba(255, 176, 0, 0.45);
+  --accent-glow: 0 0 0.5em rgba(255, 176, 0, 0.55);
+
+  --fs: clamp(13px, 0.3vw + 12px, 15px);
+  --lh: 1.6;
+  --pad: clamp(16px, 4vw, 40px);
+  --bar-h: calc(40px + env(safe-area-inset-top));
+
+  --mono: "JetBrains Mono", "Nanum Gothic Coding", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  color-scheme: dark;
+}
+
+html { background: var(--bg); color: var(--fg); -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  min-height: 100dvh;
+  font: 400 var(--fs) / var(--lh) var(--mono);
+  color: var(--fg);
+  text-shadow: var(--glow);
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+}
+
+::selection { background: var(--fg); color: var(--bg); }
+
+a { color: inherit; text-decoration: none; }
+button { font: inherit; color: inherit; }
+img { max-width: 100%; }
+[hidden] { display: none !important; }
+
+:focus-visible { outline: 1px dashed var(--fg); outline-offset: 3px; }
+
+h1, h2, h3 { margin: 0; font-weight: 700; letter-spacing: 0.06em; line-height: 1.25; }
+
+/* 스크롤바 */
+* { scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-thumb { background: var(--line); }
+::-webkit-scrollbar-track { background: transparent; }
+
+/* ── 배경: 별 + 아주 옅은 격자 (body.station) ───────────── */
+.station::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-image:
+    radial-gradient(1px 1px at 12% 18%, rgba(255, 255, 255, 0.7), transparent 60%),
+    radial-gradient(1px 1px at 68% 42%, rgba(255, 255, 255, 0.5), transparent 60%),
+    radial-gradient(1.5px 1.5px at 38% 76%, rgba(255, 255, 255, 0.6), transparent 60%),
+    radial-gradient(1px 1px at 86% 88%, rgba(255, 255, 255, 0.4), transparent 60%),
+    radial-gradient(1px 1px at 52% 8%, rgba(255, 255, 255, 0.35), transparent 60%),
+    linear-gradient(rgba(255, 255, 255, 0.025) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.025) 1px, transparent 1px);
+  background-size: 310px 310px, 470px 470px, 590px 590px, 230px 230px, 380px 380px, 64px 64px, 64px 64px;
+  animation: drift 180s linear infinite;
+}
+
+/* ── 창밖 배경 (body[data-backdrop], js/hud.js가 만듦) ─────────────
+   모자이크(작게 그린 캔버스를 늘림) + 블러 + 유리 반사 → 유리 너머 멀리 보이는 정거장 */
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: -2;
+  overflow: hidden;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 1.2s ease;
+}
+.backdrop.ready { opacity: 1; }
+
+.backdrop-mosaic {
+  position: absolute;
+  inset: -6%; /* 블러/흐름 때문에 가장자리가 비지 않도록 */
+  width: 112%;
+  height: 112%;
+  object-fit: cover;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  filter: blur(0.5px) brightness(0.5) saturate(0.85) contrast(1.05);
+  animation: backdrop-float 90s ease-in-out infinite alternate;
+}
+@keyframes backdrop-float {
+  from { transform: translate(-1.5%, 1%) scale(1.02); }
+  to { transform: translate(1.5%, -1%) scale(1.06); }
+}
+
+/* 유리: 사선 반사광 + 살짝 뿌연 막 + 가장자리 그늘 */
+.backdrop-glass {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(112deg,
+      transparent 18%, rgba(255, 255, 255, 0.05) 24%, rgba(255, 255, 255, 0.015) 30%, transparent 33%,
+      transparent 58%, rgba(255, 255, 255, 0.035) 63%, transparent 67%),
+    linear-gradient(to bottom, rgba(170, 200, 230, 0.05), rgba(0, 0, 0, 0.25)),
+    radial-gradient(ellipse at 50% 45%, transparent 35%, rgba(0, 0, 0, 0.72) 100%);
+  box-shadow: inset 0 0 140px rgba(0, 0, 0, 0.85);
+}
+
+/* 배경이 있는 페이지: 패널은 반투명 유리판처럼 */
+body[data-backdrop] { --glass: rgba(4, 4, 4, 0.72); }
+body[data-backdrop] .hud {
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+}
+
+/* ── CRT 오버레이 ───────────────────────── */
+.crt {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  pointer-events: none;
+  background:
+    repeating-linear-gradient(to bottom, rgba(255, 255, 255, 0.025) 0 1px, transparent 1px 3px),
+    radial-gradient(ellipse at center, transparent 55%, rgba(0, 0, 0, 0.6) 100%);
+}
+
+/* ── 상단 상태바 ───────────────────────── */
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  height: var(--bar-h);
+  padding: env(safe-area-inset-top) var(--pad) 0;
+  display: flex;
+  align-items: center;
+  gap: 1.6em;
+  border-bottom: 1px solid var(--faint);
+  background: rgba(0, 0, 0, 0.88);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+  color: var(--dim);
+  font-size: clamp(10px, 0.2vw + 9.5px, 11.5px);
+  letter-spacing: 0.12em;
+  white-space: nowrap;
+}
+.topbar b { color: var(--fg); font-weight: 500; }
+.topbar .grow { flex: 1; }
+
+.brand { display: inline-flex; align-items: center; gap: 0.7em; color: var(--fg); font-weight: 700; letter-spacing: 0.2em; }
+.brand small { color: var(--dim); font-weight: 400; letter-spacing: 0.12em; }
+
+.led {
+  display: inline-block;
+  flex: none;
+  width: 0.6em;
+  height: 0.6em;
+  margin-right: 0.6em;
+  border: 1px solid currentColor;
+  border-radius: 50%;
+  vertical-align: 0;
+}
+.brand .led { margin: 0; }
+.led.on { background: var(--accent); border-color: var(--accent); box-shadow: 0 0 6px var(--accent); }
+.led.blink { animation: blink 0.8s steps(1) infinite; }
+
+/* ── 텍스트 ───────────────────────── */
+.eyebrow {
+  display: block;
+  color: var(--dim);
+  font-size: 0.72em;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+}
+.eyebrow::before { content: "// "; color: var(--accent); }
+
+.dim { color: var(--dim); }
+
+/* ── HUD 패널: 네 모서리에 브래킷 ───────────────────────── */
+.hud {
+  --c: var(--line);
+  --cs: 10px;
+  position: relative;
+  border: 1px solid var(--faint);
+  background:
+    linear-gradient(var(--c), var(--c)) 0 0 / var(--cs) 1px,
+    linear-gradient(var(--c), var(--c)) 0 0 / 1px var(--cs),
+    linear-gradient(var(--c), var(--c)) 100% 0 / var(--cs) 1px,
+    linear-gradient(var(--c), var(--c)) 100% 0 / 1px var(--cs),
+    linear-gradient(var(--c), var(--c)) 0 100% / var(--cs) 1px,
+    linear-gradient(var(--c), var(--c)) 0 100% / 1px var(--cs),
+    linear-gradient(var(--c), var(--c)) 100% 100% / var(--cs) 1px,
+    linear-gradient(var(--c), var(--c)) 100% 100% / 1px var(--cs),
+    var(--glass);
+  background-repeat: no-repeat;
+  background-origin: border-box;
+  transition: border-color 0.2s;
+}
+
+/* ── 버튼 ───────────────────────── */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6em;
+  min-height: 44px;
+  padding: 0.7em 1.4em;
+  border: 1px solid var(--fg);
+  border-radius: 0;
+  background: transparent;
+  color: var(--fg);
+  font-size: 0.82em;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  text-shadow: inherit;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s, box-shadow 0.15s;
+}
+.btn-primary { background: var(--fg); color: var(--bg); text-shadow: none; box-shadow: 0 0 14px rgba(255, 255, 255, 0.18); }
+.btn-primary:not(:disabled):hover { background: transparent; color: var(--fg); text-shadow: var(--glow); }
+.btn-ghost { border-color: var(--line); }
+.btn-ghost:not(:disabled):hover { border-color: var(--fg); background: rgba(255, 255, 255, 0.08); }
+.btn-small { min-height: 32px; padding: 0.35em 0.9em; font-size: 0.72em; }
+.btn:disabled { opacity: 0.35; cursor: not-allowed; }
+.btn:not(:disabled):active { transform: translateY(1px); }
+
+.text-btn {
+  padding: 0.4em 0;
+  border: 0;
+  background: none;
+  color: var(--dim);
+  letter-spacing: inherit;
+  cursor: pointer;
+}
+.text-btn:hover { color: var(--fg); }
+.text-btn::before { content: "> "; color: var(--accent); opacity: 0; transition: opacity 0.15s; }
+.text-btn:hover::before { opacity: 1; }
+
+/* ── 상태 표시 ───────────────────────── */
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6em;
+  padding: 0.25em 0.75em;
+  border: 1px solid var(--line);
+  background: rgba(0, 0, 0, 0.6);
+  font-size: 0.72em;
+  letter-spacing: 0.14em;
+  white-space: nowrap;
+}
+.status-pill i {
+  flex: none;
+  width: 0.55em;
+  height: 0.55em;
+  border: 1px solid currentColor;
+  border-radius: 50%;
+}
+:is(.status-pill[data-status="waiting"], [data-status="waiting"] .status-pill) i {
+  background: var(--accent);
+  border-color: var(--accent);
+  animation: blink 1.2s steps(1) infinite;
+}
+:is(.status-pill[data-status="playing"], [data-status="playing"] .status-pill) {
+  border-color: var(--accent-line);
+  color: var(--accent);
+  text-shadow: var(--accent-glow);
+}
+:is(.status-pill[data-status="playing"], [data-status="playing"] .status-pill) i {
+  background: var(--accent);
+  box-shadow: 0 0 6px var(--accent);
+}
+:is(.status-pill[data-status="ended"], [data-status="ended"] .status-pill) { color: var(--dim); }
+:is(.status-pill[data-status="ended"], [data-status="ended"] .status-pill) i { background: var(--dim); }
+:is(.status-pill[data-status="closed"], [data-status="closed"] .status-pill) { color: var(--dim); border-style: dashed; }
+
+/* ── 아바타 (avatar.js fillAvatar가 이니셜 또는 img를 넣음) ───── */
+.avatar-box {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  background: #0b0b0b;
+  color: var(--fg);
+  font-weight: 700;
+  text-transform: uppercase;
+}
+.avatar-box img { width: 100%; height: 100%; object-fit: cover; }
+
+/* ── 다이얼로그 공통 ───────────────────────── */
+dialog { color: var(--fg); }
+dialog::backdrop { background: rgba(0, 0, 0, 0.75); -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px); }
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+@media (max-width: 560px) {
+  .topbar { gap: 1em; }
+  .hide-sm { display: none !important; }
+}
+
+/* ── 애니메이션 ───────────────────────── */
+@keyframes blink { 50% { opacity: 0; } }
+@keyframes line-in { from { opacity: 0; transform: translateY(0.6em); } }
+@keyframes rise { from { opacity: 0; transform: translateY(1.2em); } }
+@keyframes drift { to { background-position: 310px 155px, -470px 235px, 590px -295px, -230px -115px, 380px 190px, 0 0, 0 0; } }
+@keyframes power-on {
+  0% { opacity: 0; transform: scaleY(0.01); filter: brightness(3); }
+  45% { opacity: 1; transform: scaleY(0.01); }
+  100% { transform: scaleY(1); filter: brightness(1); }
+}
+@keyframes boot-in {
+  0% { opacity: 0; transform: translateY(0.8em); filter: brightness(2); }
+  60% { opacity: 1; }
+  100% { transform: none; filter: none; }
+}
+@keyframes scan {
+  from { transform: translateY(-100%); }
+  to { transform: translateY(100%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
+}
+
+/* 성운 배경 */
+.room-visual > * { z-index: 1; }
+.room-visual > :not(.room-no) { position: relative; }
+
+.room-visual::before {
+  content: "";
+  position: absolute;
+  inset: -14%; /* 움직여도 가장자리가 드러나지 않도록 여유 */
+  pointer-events: none;
+  background:
+    linear-gradient(to top, rgba(0, 0, 0, 0.88), rgba(0, 0, 0, 0.1) 60%),
+    var(--room-bg, url("../img/nebula.jpg")) var(--crop, 50% 50%) / cover no-repeat;
+  /* 마우스 반대 방향으로 살짝 밀림 + 천천히 숨 쉬듯 확대/회전 */
+  translate: calc(var(--mx, 0) * -22px) calc(var(--my, 0) * -14px);
+  filter: var(--tint, none) saturate(1.1) brightness(0.85);
+  animation: nebula-breathe 14s ease-in-out infinite alternate;
+  transition: filter 0.4s;
+  will-change: translate, scale;
+}
+.room-card:hover .room-visual::before { filter: var(--tint, none) saturate(1.25) brightness(1.05); }
+
+@keyframes nebula-breathe {
+  0% { scale: 1; rotate: 0deg; }
+  50% { scale: 1.06; rotate: 0.8deg; }
+  100% { scale: 1.02; rotate: -0.6deg; }
+}
+
+/* 같은 사진이라도 방마다 다른 부분 + 다른 색감 */
+.room-card:nth-child(3n + 1) .room-visual { --crop: 45% 55%; }
+.room-card:nth-child(3n + 2) .room-visual { --crop: 70% 30%; --tint: hue-rotate(150deg); }
+.room-card:nth-child(3n) .room-visual { --crop: 25% 70%; --tint: hue-rotate(235deg); }
+.room-card:nth-child(3n + 2) .room-visual::before { animation-delay: -5s; }
+.room-card:nth-child(3n) .room-visual::before { animation-delay: -9s; }
+.room-visual[style*="--room-bg"] { --tint: none; }

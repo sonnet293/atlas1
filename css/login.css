@@ -1,0 +1,171 @@
+:root {
+  --fs: clamp(10.5px, 0.25vw + 9.5px, 12.5px);
+  --bar-h: calc(34px + env(safe-area-inset-top));
+}
+
+html, body { height: 100%; }
+body { overflow: hidden; }
+
+.topbar { position: fixed; inset: 0 0 auto; background: var(--bg); }
+
+.skip { color: var(--fg); animation: blink 1.6s steps(1) infinite; }
+@media (hover: none) { .on-key { display: none; } }
+@media (hover: hover) { .on-touch { display: none; } }
+
+/* ── 터미널 화면 ───────────────────────── */
+.screen {
+  position: fixed;
+  top: var(--bar-h);
+  left: 0;
+  right: 0;
+  bottom: var(--kb, 0px);
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  display: flex;
+  flex-direction: column; /* .term을 아래쪽에 붙임 → 새 줄이 아래에서 올라옴 */
+  padding: 24px var(--pad) calc(clamp(20px, 4vh, 40px) + env(safe-area-inset-bottom));
+  /* 위로 밀려 올라간 오래된 줄은 서서히 사라짐 */
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 40%);
+  mask-image: linear-gradient(to bottom, transparent 0, #000 40%);
+  scrollbar-width: none;
+  animation: power-on 0.7s ease-out;
+}
+.screen::-webkit-scrollbar { display: none; }
+
+.term { width: 100%; max-width: 60ch; margin-top: auto; }
+
+/* 줄이 추가될 때 살짝 밀려 올라오는 느낌 */
+#log > :not(.banner) { animation: line-in 0.22s ease-out; }
+
+.line {
+  min-height: calc(var(--lh) * 1em);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.tag { color: var(--dim); }
+.tag-warning, .tag-err {
+  padding: 0 0.25em;
+  background: var(--fg);
+  color: var(--bg);
+  text-shadow: none;
+}
+
+.title {
+  font-size: clamp(1.5em, 4vw, 2em);
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  line-height: 1.25;
+  text-shadow: 0 0 0.3em rgba(255, 255, 255, 0.5);
+}
+.sub { color: var(--dim); font-size: 0.82em; letter-spacing: 0.18em; }
+.node { letter-spacing: 0.1em; }
+.strong { font-weight: 700; letter-spacing: 0.08em; }
+.err .msg { font-weight: 700; }
+.cmd .ps, .echo .ps { color: var(--dim); }
+
+/* [TAG] 메시지 ........ STATUS */
+.lead { display: flex; align-items: flex-end; }
+.lead .left { min-width: 0; }
+.lead .dots {
+  flex: 1 1 2ch;
+  min-width: 2ch;
+  overflow: hidden;
+  white-space: nowrap;
+  color: var(--dim);
+  clip-path: inset(0 100% 0 0);
+}
+.lead .status { flex: none; margin-left: 1ch; font-weight: 700; visibility: hidden; }
+.lead .status.show { visibility: visible; }
+.lead .status.bad { padding: 0 0.3em; background: var(--fg); color: var(--bg); text-shadow: none; }
+
+.rule {
+  overflow: hidden;
+  white-space: nowrap;
+  color: var(--line);
+  clip-path: inset(0 100% 0 0);
+  transition: clip-path 0.38s ease-out;
+}
+.rule.drawn { clip-path: inset(0); }
+
+.banner {
+  margin: 0.5em 0;
+  padding: 0.55em 0.5em;
+  background: var(--fg);
+  color: var(--bg);
+  font-weight: 700;
+  letter-spacing: 0.35em;
+  text-align: center;
+  text-shadow: none;
+  animation: flash 0.18s steps(1) 3;
+}
+
+/* 커서 */
+.cur {
+  display: inline-block;
+  width: 0.62em;
+  height: 1.15em;
+  margin-left: 1px;
+  vertical-align: text-bottom;
+  background: var(--fg);
+  box-shadow: 0 0 0.4em rgba(255, 255, 255, 0.5);
+  animation: blink 1.05s steps(1) infinite;
+}
+.cur.solid { animation: none; }
+
+/* ── 입력 ───────────────────────── */
+.field-label {
+  display: block;
+  margin-top: 1em;
+  color: var(--dim);
+  font-size: 0.85em;
+  letter-spacing: 0.2em;
+}
+.field.rise { animation: rise 0.45s cubic-bezier(0.2, 0.8, 0.2, 1); }
+
+.prompt { position: relative; cursor: text; overflow-wrap: anywhere; white-space: pre-wrap; }
+.prompt .ps { margin-right: 1ch; }
+.prompt input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  outline: none;
+  opacity: 0;
+  background: transparent;
+  color: transparent;
+  caret-color: transparent;
+  font-size: 16px; /* iOS 자동 확대 방지 */
+}
+.field:not(.focused) .cur {
+  background: transparent;
+  outline: 1px solid var(--fg);
+  outline-offset: -1px;
+  box-shadow: none;
+  animation: none;
+}
+.field.typing .cur { animation: none; }
+.prompt.shake { animation: shake 0.32s; }
+
+.field-err:empty { display: none; }
+.field-err { margin-top: 0.2em; }
+
+/* 로그인 성공 후 페이드 */
+body.leaving .screen,
+body.leaving .topbar {
+  opacity: 0;
+  filter: blur(1.5px);
+  transform: scale(0.985);
+  transition: opacity 1.8s ease-in, filter 1.8s ease-in, transform 1.8s ease-in;
+}
+
+@keyframes flash { 50% { background: transparent; color: var(--fg); } }
+@keyframes shake {
+  25% { transform: translateX(-0.4em); }
+  50% { transform: translateX(0.3em); }
+  75% { transform: translateX(-0.15em); }
+}

@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Nanum+Gothic+Coding:wght@400;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="../css/intro.css">
+    <link rel="stylesheet" href="../css/battleroom.css">
+    <title>// SIMULATION - 1</title>
+</head>
+<body>
+
+    <!--인트로 오버레이-->
+    <div id="intro-overlay">
+        <canvas id="intro-noise" aria-hidden="true"></canvas>
+
+        <div id="intro-screen" class="ix-screen">
+            <!-- 1. 터치 대기 -->
+            <div id="touch-screen" class="ix-panel ix-touch">
+                <div class="ix-title">VOYAGER BATTLE SIMULATION</div>
+                <div class="ix-sub">NODE 03 // <span id="ix-room">ROOM --</span></div>
+                <div class="ix-rule"></div>
+                <div class="ix-line"><b>[SYS]</b> Battle link established.</div>
+                <div class="ix-line"><b>[SYS]</b> Trainer data synchronized.</div>
+                <div class="ix-line ix-lead"><b>[SYS]</b> Experimental subsystem<i></i>ONLINE</div>
+                <div class="ix-line"><b>[SYS]</b> Awaiting trainer input.</div>
+                <div id="touch-prompt">&gt; 아무데나 터치하여 시작<span class="ix-cur"></span></div>
+            </div>
+
+            <!-- 2. 로그 폭주 -->
+            <div id="ix-term" class="ix-panel ix-term" hidden></div>
+
+            <!-- 3. 오류 화면 -->
+            <div id="ix-error" class="ix-panel ix-error" hidden>
+                <div class="ix-err-code">*** STOP: 0x000000VG (0xV0YA6E4, 0x00000003, 0xDEADBEEF, 0x00000001)</div>
+                <div class="ix-err-title">EXPERIMENTAL_SUBSYSTEM_OVERRIDE</div>
+                <p>An unexpected battle signal was detected on NODE 03.<br>The simulation has been taken over to prevent damage to your trainer data.</p>
+                <div class="ix-err-list">
+                    <div>[!] Unauthorized combat protocol ..... ENGAGED</div>
+                    <div>[!] Safety limiter ................... DISABLED</div>
+                    <div>[!] Input source ..................... PROJECT LEAD</div>
+                </div>
+                <div class="ix-err-dump">Dumping physical memory ... <span id="ix-dump">0</span>%</div>
+            </div>
+
+            <!-- 4. VS -->
+            <div id="vs-screen" class="ix-panel ix-vs" hidden>
+                <div class="ix-vs-tag">[MATCH] TRAINER LINK ESTABLISHED</div>
+                <div class="ix-vs-row">
+                    <div class="vs-side vs-left" id="vs-left">
+                        <span class="vs-slot">PLAYER 1</span>
+                        <div class="vs-name" id="vs-name-left">PLAYER1</div>
+                    </div>
+                    <div class="vs-label" id="vs-label">VS</div>
+                    <div class="vs-side vs-right" id="vs-right">
+                        <span class="vs-slot">PLAYER 2</span>
+                        <div class="vs-name" id="vs-name-right">PLAYER2</div>
+                    </div>
+                </div>
+                <div class="ix-vs-foot">ENGAGING BATTLE PROTOCOL<span class="ix-cur"></span></div>
+            </div>
+        </div>
+
+        <div class="ix-bars" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i></div>
+        <div class="ix-crt" aria-hidden="true"></div>
+        <div class="ix-flash" id="vs-flash" aria-hidden="true"></div>
+        <div id="touch-ready-status" class="ix-status" role="status"></div>
+    </div>
+
+    <div class="main">
+
+        <div id="battle-wrapper" class="battle-wrap">
+
+            <div class="battle-top">
+
+                <!--상단 좌측 아군 섹션-->
+                <div class="mine-col">
+                    <span id="mine-name" class="name">-</span>
+                    <div id="mine-pokemon-area" class="pokemon-panel mine">
+                        <div class="portrait-wrap">
+                            <div id="mine-portrait-placeholder" class="portrait-placeholder"></div>
+                            <img alt="" id="mine-portrait" class="portrait-img"/>
+                        </div>
+                        <div class="hp-card">
+                            <div class="hp-info">
+                                <div id="mine-stats" class="stats"></div>
+                                <span id="mine-hp" class="hp-text">-</span>
+                            </div>
+                            <div class="hp-bar-bg">
+                                <div id="mine-hp-bar" class="hp-bar"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!--상단 중앙 주사위, 턴 섹션-->
+                <div class="turn-info">
+                    <div id="turn-indicator" class="turn-indicator"></div>
+                    <div id="result" class="result"></div>
+                    <div id="diceRow" class="dice-row">
+                        <div class="dice-box">
+                            <div id="dice-mine-name" class="dice-name">-</div>
+                            <div id="dice-mine" class="dice-number">-</div>
+                        </div>
+                        <div class="dice-vs">VS</div>
+                        <div class="dice-box">
+                            <div id="dice-enemy-name" class="dice-name">-</div>
+                            <div id="dice-enemy" class="dice-number">-</div>
+                        </div>
+                    </div>
+                    
+                </div>
+
+                <!--상단 우측 적군 섹션-->
+                <div class="opp-col">
+                    <span id="enemy-name" class="name">-</span>
+                    <div id="enemy-pokemon-area" class="pokemon-panel oppnent">
+                        <div class="hp-card">
+                            <div class="hp-info">
+                                <span id="enemy-hp" class="hp-text" style="display: none;">-</span>
+                                <div id="enemy-stats" class="stats"></div>
+                            </div>
+                            <div class="hp-bar-bg">
+                                <div id="enemy-hp-bar" class="hp-bar"></div>
+                            </div>
+                        </div>
+                        <div class="portrait-wrap">
+                            <div id="enemy-portrait-placeholder" class="portrait-placeholder"></div>
+                            <img alt="" id="enemy-portrait" class="portrait-img" />
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
+            <div class="battle-middle">
+
+                <div class="my-section">
+                    <div id="leaveBtn" style="display: none;">LEAVE</div>
+                    <div class="move-grid">
+                        <button id="moveBtn0" class="move-btn" style="display: none;"></button>
+                        <button id="moveBtn1" class="move-btn" style="display: none;"></button>
+                        <button id="moveBtn2" class="move-btn" style="display: none;"></button>
+                        <button id="moveBtn3" class="move-btn" style="display: none;"></button>
+                    </div>
+                    <div id="mine-bench" class="bench-list"></div>
+                </div>
+                <div id="battle-log"></div>
+            </div>
+
+            <div class="battle-bottom">
+                
+                <div id="spectator-chat-section" class="chat-section" style="display: none;">
+                    <div class="chat-title">관전자 채팅</div>
+                    <div id="spectator-chat-messages" class="chat-message"></div>
+                    <div class="chat-input-row">
+                        <input type="text" id="spectator-chat-input" placeholder="메시지 입력" />
+                        <button id="spectator-chat-send-btn">전송</button>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
+    <!--BGM 음량 조절-->
+    <div id="bgm-volume-control">
+        <button id="bgm-mute-btn" type="button" aria-label="음소거">🔊</button>
+        <input type="range" id="bgm-volume" min="0" max="1" step="0.05" value="0.7" aria-label="BGM 음량" />
+        <span id="bgm-volume-label">70%</span>
+    </div>
+
+    <script>
+        const ROOM_ID = "battleroom1";
+    </script>
+    <script src="../js/battleBg.js" defer></script>
+    <script type="module" src="../js/intro.js"></script>
+    <script type="module" src="../js/battle.js"></script>
+</body>
+</html>

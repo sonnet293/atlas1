@@ -1,0 +1,319 @@
+/* ==========================================================
+   대기실 (pages/battleroomN.html)
+   ========================================================== */
+
+.lobby {
+  display: grid;
+  gap: clamp(16px, 3vh, 26px);
+  max-width: 960px;
+  margin: 0 auto;
+  /* 하단 고정 버튼 바(.lobby-actions)에 가리지 않도록 아래 여백 확보 */
+  padding: clamp(20px, 4vh, 44px) var(--pad) calc(120px + env(safe-area-inset-bottom));
+}
+
+/* ── 상단 히어로 + 레이더 ───────────────────────── */
+.lobby-hero {
+  position: relative;
+  display: grid;
+  justify-items: start;
+  gap: 8px;
+  padding: clamp(20px, 4vw, 32px);
+  overflow: hidden;
+  border: 1px solid var(--faint);
+  background:
+    linear-gradient(90deg, rgba(0, 0, 0, 0.94) 35%, rgba(0, 0, 0, 0.45)),
+    var(--room-bg, none) center / cover no-repeat;
+  animation: boot-in 0.5s ease-out both;
+}
+.lobby-hero > * { position: relative; z-index: 1; }
+.lobby-hero h1 { font-size: clamp(1.6em, 5vw, 2.4em); letter-spacing: 0.08em; }
+.lobby-hero .status-pill { margin-bottom: 6px; }
+
+.lobby-hero::before,
+.lobby-hero::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  right: clamp(-90px, -6vw, -40px);
+  width: clamp(180px, 30vw, 260px);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  pointer-events: none;
+}
+/* 레이더 동심원 + 십자선 */
+.lobby-hero::before {
+  transform: translateY(-50%);
+  border: 1px solid var(--line);
+  background:
+    repeating-radial-gradient(circle, transparent 0 26px, rgba(255, 255, 255, 0.08) 26px 27px),
+    linear-gradient(transparent calc(50% - 0.5px), rgba(255, 255, 255, 0.1) 0 calc(50% + 0.5px), transparent 0),
+    linear-gradient(90deg, transparent calc(50% - 0.5px), rgba(255, 255, 255, 0.1) 0 calc(50% + 0.5px), transparent 0);
+}
+/* 회전하는 스윕 */
+.lobby-hero::after {
+  background: conic-gradient(from 0deg, rgba(255, 176, 0, 0.35), transparent 22%);
+  animation: sweep 4s linear infinite;
+}
+@keyframes sweep {
+  from { transform: translateY(-50%) rotate(0deg); }
+  to { transform: translateY(-50%) rotate(360deg); }
+}
+
+/* ── 교체 요청 배너 ───────────────────────── */
+.swap-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 16px;
+  padding: 12px 16px;
+  border: 1px solid var(--accent-line);
+  background: var(--accent-soft);
+  animation: rise 0.35s ease-out;
+}
+.swap-text { font-size: 0.9em; }
+.swap-text::before {
+  content: "[REQ]";
+  margin-right: 0.6em;
+  padding: 0 0.3em;
+  background: var(--accent);
+  color: var(--bg);
+  text-shadow: none;
+}
+.swap-actions { display: flex; gap: 8px; }
+
+/* ── 플레이어 카드 ───────────────────────── */
+.versus {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: stretch;
+  gap: clamp(10px, 2vw, 20px);
+}
+
+.player-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 230px;
+  padding: 40px 16px 20px;
+  text-align: center;
+  animation: boot-in 0.5s 0.15s ease-out both;
+}
+#player2 { animation-delay: 0.25s; }
+
+.player-slot {
+  position: absolute;
+  top: 12px;
+  left: 14px;
+  color: var(--dim);
+  font-size: 0.68em;
+  letter-spacing: 0.24em;
+}
+.player-card[data-me="true"]::after {
+  content: "YOU";
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  padding: 0 0.5em;
+  border: 1px solid var(--accent-line);
+  color: var(--accent);
+  font-size: 0.64em;
+  letter-spacing: 0.2em;
+}
+
+.player-card[data-state="empty"] { --c: var(--faint); border-style: dashed; border-color: var(--line); }
+.player-card[data-state="empty"] .player-name { color: var(--dim); }
+.player-card[data-state="ready"] {
+  --c: var(--accent);
+  border-color: var(--accent-line);
+  box-shadow: inset 0 0 40px var(--accent-soft);
+}
+
+.profile-link {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  max-width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  text-shadow: inherit;
+  cursor: pointer;
+}
+.profile-link:hover .player-name,
+.profile-link:hover span:last-child { text-decoration: underline; text-underline-offset: 4px; }
+.profile-link:hover :is(.player-avatar, .spectator-avatar) { border-color: var(--fg); }
+
+.player-avatar,
+.spectator-avatar {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  background: #0b0b0b;
+  font-weight: 700;
+  text-transform: uppercase;
+  transition: border-color 0.15s;
+}
+.player-avatar img,
+.spectator-avatar img { width: 100%; height: 100%; object-fit: cover; }
+
+.player-avatar { width: clamp(72px, 14vw, 104px); aspect-ratio: 1; font-size: 1.8em; }
+.player-card[data-state="empty"] .player-avatar { border-style: dashed; color: var(--dim); }
+
+.player-name { max-width: 100%; font-size: 1.05em; overflow-wrap: anywhere; }
+
+.ready-badge {
+  padding: 0.15em 0.8em;
+  border: 1px solid var(--line);
+  color: var(--dim);
+  font-size: 0.7em;
+  letter-spacing: 0.2em;
+}
+.player-card[data-state="ready"] .ready-badge {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--bg);
+  font-weight: 700;
+  text-shadow: none;
+}
+.player-card .btn-small { margin-top: 4px; }
+
+.versus-mark {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: var(--dim);
+  font-weight: 700;
+  letter-spacing: 0.2em;
+}
+.versus-mark::before,
+.versus-mark::after { content: ""; flex: 1; width: 1px; max-height: 70px; background: var(--line); }
+
+.lobby-hint { margin: 0; color: var(--dim); font-size: 0.88em; text-align: center; }
+.lobby-hint::before { content: "> "; }
+.lobby-hint:empty { display: none; }
+.lobby-hint strong { color: var(--fg); }
+
+/* ── 관전자 ───────────────────────── */
+.spectators { padding: 16px 18px 18px; }
+.spectators header { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+.spectators h2 { font-size: 0.78em; letter-spacing: 0.24em; }
+.spectators h2::before { content: "// "; color: var(--dim); }
+.count-badge { padding: 0 0.55em; border: 1px solid var(--line); font-size: 0.75em; }
+
+.spectator-list { display: flex; flex-wrap: wrap; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.spectator-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px 4px 4px;
+  border: 1px solid var(--faint);
+  background: rgba(0, 0, 0, 0.5);
+  animation: rise 0.3s ease-out;
+}
+.spectator-chip[data-me="true"] { border-color: var(--accent-line); }
+.spectator-avatar { width: 26px; height: 26px; font-size: 0.8em; }
+.profile-link.inline { flex-direction: row; gap: 8px; font-size: 0.85em; }
+.spectator-list .empty { color: var(--dim); font-size: 0.85em; }
+.spectator-list .empty::before { content: "-- "; }
+
+/* ── 하단 버튼 ───────────────────────── */
+.lobby-actions {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 20;
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  padding: 14px var(--pad) calc(14px + env(safe-area-inset-bottom));
+  border-top: 1px solid var(--faint);
+  background: rgba(0, 0, 0, 0.9);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+}
+.lobby-actions .btn { min-width: 150px; }
+#readyBtn[aria-pressed="true"] {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--bg);
+  animation: ready-pulse 1.6s ease-in-out infinite;
+}
+@keyframes ready-pulse {
+  50% { box-shadow: 0 0 26px rgba(255, 176, 0, 0.55); }
+}
+
+/* ── 트레이너 카드 팝업 ───────────────────────── */
+.profile-dialog {
+  width: min(980px, calc(100vw - 24px));
+  height: min(700px, calc(100dvh - 48px));
+  max-width: none;
+  max-height: none;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  background: #000;
+}
+.profile-dialog[open] { animation: rise 0.3s ease-out; }
+.profile-dialog iframe { display: block; width: 100%; height: 100%; border: 0; }
+.profile-dialog-close {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 1;
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--line);
+  background: #000;
+  cursor: pointer;
+}
+.profile-dialog-close:hover { border-color: var(--fg); }
+
+/* ── 반응형 ───────────────────────── */
+@media (max-width: 600px) {
+  .versus { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .versus-mark { display: none; }
+  .player-card { min-height: 190px; padding: 36px 10px 16px; }
+  .player-card .btn-small { padding-inline: 0.6em; }
+  .lobby-actions .btn { flex: 1; min-width: 0; }
+}
+
+@media (max-width: 360px) {
+  .versus { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* ── 더블배틀 대기실: 팀 A(1·2번) vs 팀 B(3·4번) ───────────────────────── */
+.versus.double .team-col {
+  display: grid;
+  align-content: start;
+  gap: clamp(10px, 1.6vw, 14px);
+  min-width: 0;
+}
+.team-tag {
+  color: var(--dim);
+  font-size: 0.7em;
+  letter-spacing: 0.3em;
+  text-align: center;
+}
+.team-tag::before { content: "// "; }
+.versus.double .player-card { min-height: 170px; padding: 34px 12px 16px; }
+.versus.double .player-avatar { width: clamp(56px, 10vw, 80px); font-size: 1.4em; }
+#player3 { animation-delay: 0.3s; }
+#player4 { animation-delay: 0.35s; }
+
+@media (max-width: 600px) {
+  .versus.double { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .versus.double .player-card { min-height: 150px; padding: 30px 8px 12px; }
+}
+
+@media (max-width: 360px) {
+  .versus.double { grid-template-columns: minmax(0, 1fr); }
+}

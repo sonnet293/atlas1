@@ -4,12 +4,12 @@ import { getAuth } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-aut
 import { getFirestore } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
 const firebaseConfig = {
-  apiKey: "AIzaSyDDdSa8i3ZXu3tCJaHzdN0L16-A5Ez58mE",
-  authDomain: "voyage-55f62.firebaseapp.com",
-  projectId: "voyage-55f62",
-  storageBucket: "voyage-55f62.firebasestorage.app",
-  messagingSenderId: "394527359794",
-  appId: "1:394527359794:web:f29daaff5c19c182588d2b",
+  apiKey: "AIzaSyC7IDFzk8T1RhCHY49Kn7L6lb5YQKljHqc",
+  authDomain: "atlas-f52d2.firebaseapp.com",
+  projectId: "atlas-f52d2",
+  storageBucket: "atlas-f52d2.firebasestorage.app",
+  messagingSenderId: "27529158192",
+  appId: "1:27529158192:web:d310a83b6330154af457f5",
   measurementId: "G-S790TL5507"
 };
 

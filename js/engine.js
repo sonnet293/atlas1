@@ -3,7 +3,7 @@
 // GM 브라우저(gm/gm.js)만 이 파일로 판정하고, 플레이어 브라우저는 요청(actions)만 생성한다.
 // 모든 함수는 room 스냅샷을 받아 { ok: true, update } 또는 { ok: false, reason }을 돌려준다.
 import { MOVES } from "./moves.js";
-import { getTypeMultiplier, pokemonTypes } from "./typeChart.js";
+import { getTypeMultiplier, pokemonTypes, originalTypes } from "./typeChart.js";
 import {
   applyStatus,
   applyVolatile,
@@ -58,6 +58,8 @@ export const BATTLE_RESET_FIELDS = {
   select_phase: false,
   p1_select_action: null,
   p2_select_action: null,
+  p1_round_action: null,
+  p2_round_action: null,
 };
 
 // 게임 시작 후 각자 users 엔트리(최대 6마리) 중에서 출전시킬 포켓몬 수
@@ -232,6 +234,29 @@ function isCharged(attacker, moveData, currentTurn) {
 
 // 아쿠아링: 라운드 종료마다 최대 체력 x 비율 회복
 const AQUA_RING_HEAL_RATIO = 1 / 16;
+
+// 분화(eruption): 위력 x 남은 HP/최대 HP (소수점 버림, 최소 1)
+function eruptionPower(power, attacker) {
+  const maxHp = attacker.maxHp ?? attacker.hp;
+  return Math.max(1, Math.floor((power * attacker.hp) / maxHp));
+}
+
+// 날개쉬기(effect.removeFlying): 비행 타입이 있으면 사용한 라운드 포함 ROOST_TURNS 라운드간 비행 타입이 사라짐. roost: { expireTurn }
+const ROOST_TURNS = 3;
+
+// 반환: { pokemon, message } (비행 타입이 없으면 message는 null)
+function applyRoost(pokemon, currentTurn) {
+  if (!originalTypes(pokemon).includes("비행")) return { pokemon, message: null };
+  const n = pokemon.name ?? "포켓몬";
+  return {
+    pokemon: { ...pokemon, roost: { expireTurn: currentTurn + ROOST_TURNS - 1 } },
+    message: `${n}의 비행 타입이 사라졌다!`,
+  };
+}
+
+function roostEndMessage(name) {
+  return `${name}의 비행 타입이 돌아왔다!`;
+}
 
 // 파괴광선류(hyperBeam): 맞히면 다음 라운드엔 반동으로 행동 불가. recharge: { turn: 행동할 수 없는 라운드 }
 function isRecharging(pokemon, currentTurn) {
@@ -534,6 +559,14 @@ function buildTurnAdvanceUpdate(room, entries, activeIdx, currentTurn, log, even
     log.push(`${n}${josa(n, "은는")} 다시 소리 기술을 쓸 수 있게 되었다!`);
   }
 
+  // 날개쉬기 만료: 마지막 라운드 종료 시 비행 타입 복구
+  for (const side of ["p1", "p2"]) {
+    const pkmn = entries[side][activeIdx[side]];
+    if (!pkmn?.roost || currentTurn < pkmn.roost.expireTurn) continue;
+    entries[side][activeIdx[side]] = { ...pkmn, roost: null };
+    if (pkmn.hp > 0) log.push(roostEndMessage(pkmn.name ?? "포켓몬"));
+  }
+
   // 랭크 만료: 마지막 라운드 종료 시 원래대로
   for (const side of ["p1", "p2"]) {
     const ranks = room[`${side}_ranks`];
@@ -596,23 +629,19 @@ function buildTurnAdvanceUpdate(room, entries, activeIdx, currentTurn, log, even
     return update;
   }
 
-  Object.assign(update, buildNextRound(entries, activeIdx, currentTurn, log));
+  Object.assign(update, buildNextRound(currentTurn));
   return update;
 }
 
-// 다음 라운드 선공 결정 (다이스) + "~의 선공!" 로그
-function buildNextRound(entries, activeIdx, currentTurn, log) {
-  const p1Active = entries.p1[activeIdx.p1];
-  const p2Active = entries.p2[activeIdx.p2];
-  const { first, r1, r2 } = decideFirst(p1Active, p2Active);
-  const firstPkmnName = (first === "p1" ? p1Active : p2Active)?.name ?? "포켓몬";
-  log.push(`${firstPkmnName}의 선공!`);
+// 다음 라운드 시작: 양쪽이 다시 이번 라운드 행동(기술/교체)을 고르는 단계로 돌아간다.
+// 선공 다이스는 둘 다 고른 뒤 resolveRound에서 굴린다.
+function buildNextRound(currentTurn) {
   return {
-    battle_turn: first,
-    round_first: first,
+    battle_turn: null,
+    round_first: null,
     round_no: currentTurn + 1,
-    p1_roll: r1,
-    p2_roll: r2,
+    p1_round_action: null,
+    p2_round_action: null,
   };
 }
 
@@ -688,20 +717,20 @@ export function initRound(room) {
   const p2Active = room.p2_entry?.[room.p2_active_idx ?? 0];
   if (!p1Active || !p2Active) return fail("출전 포켓몬 없음");
 
-  const { first, r1, r2 } = decideFirst(p1Active, p2Active);
-
   const p1Name = displayName("p1", room);
   const p2Name = displayName("p2", room);
   const p1PkmnName = p1Active.name ?? "포켓몬";
   const p2PkmnName = p2Active.name ?? "포켓몬";
-  const firstPkmnName = (first === "p1" ? p1Active : p2Active)?.name ?? "포켓몬";
 
+  // 첫 라운드도 다이스 없이 행동 선택 단계부터 시작 (선공은 둘 다 고른 뒤 resolveRound에서 결정)
   return ok({
-    battle_turn: first,
-    round_first: first,
+    battle_turn: null,
+    round_first: null,
     round_no: 1,
-    p1_roll: r1,
-    p2_roll: r2,
+    p1_roll: null,
+    p2_roll: null,
+    p1_round_action: null,
+    p2_round_action: null,
     p1_ranks: defaultRanks(),
     p2_ranks: defaultRanks(),
     p1_field: defaultField(),
@@ -713,7 +742,6 @@ export function initRound(room) {
       `${p1Name}${josa(p1Name, "과와")} ${p2Name}의 승부가 시작됐다!`,
       `${p1Name}${josa(p1Name, "은는")} ${p1PkmnName}${josa(p1PkmnName, "을를")} 내보냈다!`,
       `${p2Name}${josa(p2Name, "은는")} ${p2PkmnName}${josa(p2PkmnName, "을를")} 내보냈다!`,
-      `${firstPkmnName}의 선공!`,
     ],
     battle_event_log: [],
   });
@@ -947,6 +975,12 @@ export function useMove(room, myKey, moveIdx, uTurnIdx = null) {
     } else {
       log.push(`그러나 ${attackerName}의 체력은 가득 차 있다!`);
     }
+    if (moveData.effect.removeFlying) {
+      const roost = applyRoost(currentAttacker, currentTurn);
+      currentAttacker = roost.pokemon;
+      entries[myKey][activeIdx[myKey]] = currentAttacker;
+      if (roost.message) log.push(roost.message);
+    }
   } else if (moveData.counter && !currentAttacker.lastDamageTaken) {
     // 카운터: 아직 상대에게 피격당하지 않았으면(받은 데미지가 없으면) 실패
     const attackerName = currentAttacker.name ?? "포켓몬";
@@ -1060,6 +1094,8 @@ export function useMove(room, myKey, moveIdx, uTurnIdx = null) {
           // 눈사태: 이번 라운드에 상대의 공격 기술(위력>0)에 맞았으면 위력 70
           let power = moveData.power;
           if (moveData.avalanche && attacker.lastHitRound === currentTurn) power = 70;
+          // 분화: HP가 적을수록 위력 감소
+          if (moveData.eruption) power = eruptionPower(power, attacker);
           // 베놈쇼크: 상대가 독 상태면 위력 1.5배
           if (moveData.venomShock && defender.status === "독") power = Math.round(power * VENOM_SHOCK_MULT);
           // 분함의발구르기: 직전 라운드에 쓴 기술이 빗나갔으면 위력 1.5배
@@ -1464,10 +1500,10 @@ function crashDamage(pokemon) {
   };
 }
 
-// 교체로 들어가는 포켓몬에게서 해제되는 상태 (방어류/빛의장막·리플렉터/신비의부적/연속자르기 누적/방어류 연속 사용 기록/도발/카운터용 피격 데미지/회오리불꽃류/아쿠아링/지옥찌르기/빗나감 기록/충전/파괴광선 반동/씨뿌리기/혼란·풀죽음)
+// 교체로 들어가는 포켓몬에게서 해제되는 상태 (방어류/빛의장막·리플렉터/신비의부적/연속자르기 누적/방어류 연속 사용 기록/도발/카운터용 피격 데미지/회오리불꽃류/아쿠아링/지옥찌르기/빗나감 기록/충전/파괴광선 반동/씨뿌리기/날개쉬기/혼란·풀죽음)
 function clearOnSwitchOut(pokemon) {
   const { "혼란": _confusion, "풀죽음": _flinch, ...volatiles } = pokemon.volatiles ?? {};
-  return { ...pokemon, guard: null, guardStreak: false, screen: null, amulet: null, furyCutter: 0, taunt: null, lastDamageTaken: 0, trap: null, aquaRing: false, throatChop: null, missedRound: null, charge: null, recharge: null, leechSeed: null, volatiles };
+  return { ...pokemon, guard: null, guardStreak: false, screen: null, amulet: null, furyCutter: 0, taunt: null, lastDamageTaken: 0, trap: null, aquaRing: false, throatChop: null, missedRound: null, charge: null, recharge: null, leechSeed: null, roost: null, volatiles };
 }
 
 // 교체 공통 처리(자발적 교체/강제 교체/유턴): 나가는 포켓몬 상태 정리 -> 내보내기 로그/연출 -> 장판 적용.
@@ -1554,7 +1590,7 @@ export function switchPokemon(room, myKey, targetIdx) {
   if (pendingSwitch) {
     // 양쪽 다 교체 끝났으면 다음 라운드 다이스
     if (!room[`${oppKey}_pending_switch`]) {
-      Object.assign(update, buildNextRound(entries, activeIdx, room.round_no ?? 1, log));
+      Object.assign(update, buildNextRound(room.round_no ?? 1));
     }
   } else {
     Object.assign(update, buildTurnAdvanceUpdate({ ...room, ...update }, entries, activeIdx, room.round_no ?? 1, log, events));
@@ -1564,6 +1600,123 @@ export function switchPokemon(room, myKey, targetIdx) {
   update[`${oppKey}_entry`] = entries[oppKey];
   update.battle_log = log;
   update.battle_event_log = events;
+  return ok(update);
+}
+
+// ---- 라운드 진행 (포켓몬식) ----
+// 1) 양쪽이 이번 라운드 행동(기술 또는 교체)을 먼저 고른다. 방 문서엔 "골랐는지"(요청 id)만 남겨 상대에게 숨긴다.
+// 2) 둘 다 고르면 다이스(스피드 + 1d10)로 선공/후공을 정한다. 교체는 기술보다 항상 먼저 실행된다.
+// 3) 고른 행동을 순서대로 실행한다. 실제 판정은 기존 useMove/switchPokemon이 그대로 담당한다.
+//    choice: { kind: "move", moveIdx, switchIdx? (유턴류 교체 대상) } | { kind: "switch", targetIdx }
+
+// 지금 이번 라운드 행동을 고를 수 있는 단계인지 (라운드 진행 중, 승부 안 남, 쓰러진 포켓몬 교체 대기 없음)
+export function isChoosePhase(room) {
+  return !!room?.game_started && (room.round_no ?? 0) > 0 && !room.battle_winner &&
+    !room.p1_pending_switch && !room.p2_pending_switch;
+}
+
+function validChoiceShape(choice) {
+  if (choice?.kind === "move") {
+    return Number.isInteger(choice.moveIdx) && (choice.switchIdx == null || Number.isInteger(choice.switchIdx));
+  }
+  if (choice?.kind === "switch") return Number.isInteger(choice.targetIdx);
+  return false;
+}
+
+// room.battle_turn === side 인 상태에서 행동 하나를 실행
+function runChoice(room, side, choice) {
+  if (choice.kind === "switch") return switchPokemon(room, side, choice.targetIdx);
+  return useMove(room, side, choice.moveIdx, choice.switchIdx ?? null);
+}
+
+// 행동 선택 요청 검증. 지금 상태에서 실제로 실행 가능한 행동인지 한 번 돌려 보고(결과는 버림) 받는다.
+export function submitChoice(room, side, actionId, choice) {
+  if (!isChoosePhase(room)) return fail("행동을 고를 수 있는 단계가 아님");
+  if (room[`${side}_round_action`]) return fail("이미 이번 라운드 행동을 골랐음");
+  if (!validChoiceShape(choice)) return fail("잘못된 행동");
+  const dry = runChoice({ ...room, battle_turn: side, round_first: side }, side, choice);
+  if (!dry.ok) return dry;
+  return ok({ [`${side}_round_action`]: actionId });
+}
+
+// 앞 사람의 행동 때문에 고른 행동을 못 하게 됐을 때(도발 등) 남길 로그
+function cannotActMessage(room, side, choice) {
+  const pkmn = room[`${side}_entry`]?.[room[`${side}_active_idx`] ?? 0];
+  const n = pkmn?.name ?? "포켓몬";
+  if (choice.kind === "switch") return `${n}${josa(n, "은는")} 교체할 수 없었다!`;
+  const moveName = pkmn?.moves?.[choice.moveIdx]?.name ?? "기술";
+  if (isTaunted(pkmn, room.round_no ?? 1) && !((MOVES[moveName]?.power ?? 0) > 0)) {
+    return `${n}${josa(n, "은는")} 도발당해서 ${moveName}${josa(moveName, "을를")} 쓸 수 없다!`;
+  }
+  return `${n}${josa(n, "은는")} ${moveName}${josa(moveName, "을를")} 쓸 수 없었다!`;
+}
+
+// side의 행동을 건너뛰고(행동한 것으로 치고) 턴을 넘긴다. 후공이면 라운드 종료 처리까지 진행됨.
+function skipAction(room, side, message) {
+  const oppKey = side === "p1" ? "p2" : "p1";
+  const entries = { p1: [...(room.p1_entry ?? [])], p2: [...(room.p2_entry ?? [])] };
+  const activeIdx = { p1: room.p1_active_idx ?? 0, p2: room.p2_active_idx ?? 0 };
+  const log = [...(room.battle_log ?? [])];
+  const events = [...(room.battle_event_log ?? [])];
+  if (message) log.push(message);
+  expireUnusedGuard(entries, activeIdx, oppKey, log);
+  const advance = buildTurnAdvanceUpdate({ ...room, battle_turn: side }, entries, activeIdx, room.round_no ?? 1, log, events);
+  return { ...advance, p1_entry: entries.p1, p2_entry: entries.p2, battle_log: log, battle_event_log: events };
+}
+
+// 양쪽 행동이 다 모이면: 순서 결정(다이스) -> 순서대로 실행 -> 라운드 종료/다음 라운드 선택 단계
+export function resolveRound(room, choices) {
+  if (!isChoosePhase(room)) return fail("행동을 고를 수 있는 단계가 아님");
+  if (!validChoiceShape(choices?.p1) || !validChoiceShape(choices?.p2)) return fail("잘못된 행동");
+
+  const p1Active = room.p1_entry?.[room.p1_active_idx ?? 0];
+  const p2Active = room.p2_entry?.[room.p2_active_idx ?? 0];
+  if (!p1Active || !p2Active) return fail("출전 포켓몬 없음");
+
+  const log = [...(room.battle_log ?? [])];
+  const events = [...(room.battle_event_log ?? [])];
+  const update = { p1_roll: null, p2_roll: null };
+  let order;
+
+  const p1Switch = choices.p1.kind === "switch";
+  const p2Switch = choices.p2.kind === "switch";
+  if (p1Switch !== p2Switch) {
+    // 한쪽만 교체: 교체가 먼저 (다이스 없음)
+    order = p1Switch ? ["p1", "p2"] : ["p2", "p1"];
+  } else {
+    const { first, r1, r2 } = decideFirst(p1Active, p2Active);
+    order = first === "p1" ? ["p1", "p2"] : ["p2", "p1"];
+    update.p1_roll = r1;
+    update.p2_roll = r2;
+    const firstName = (first === "p1" ? p1Active : p2Active).name ?? "포켓몬";
+    log.push(`${firstName}의 선공!`);
+    // 클라이언트는 이 줄을 띄우기 직전에 다이스 연출을 재생한다
+    events.push({ logIndex: log.length - 1, type: "dice", p1: r1, p2: r2 });
+  }
+
+  update.round_first = order[0];
+  update.battle_log = log;
+  update.battle_event_log = events;
+  let state = { ...room, ...update, battle_turn: order[0] };
+
+  for (const side of order) {
+    // 승부가 났거나 누군가 쓰러져 교체 대기가 되면(battle_turn = null) 남은 행동은 취소
+    if (state.battle_winner || state.battle_turn !== side) break;
+    let result;
+    if ((state[`${side}_active_idx`] ?? 0) !== (room[`${side}_active_idx`] ?? 0)) {
+      // 울부짖기 등으로 강제 교체당했으면 고른 행동은 취소
+      result = skipAction(state, side, null);
+    } else {
+      const verdict = runChoice(state, side, choices[side]);
+      result = verdict.ok ? verdict.update : skipAction(state, side, cannotActMessage(state, side, choices[side]));
+    }
+    Object.assign(update, result);
+    state = { ...state, ...result };
+  }
+
+  update.p1_round_action = null;
+  update.p2_round_action = null;
+  if (!state.battle_winner && (state.round_no ?? 0) === (room.round_no ?? 0)) update.battle_turn = null;
   return ok(update);
 }
 
@@ -1637,6 +1790,9 @@ export {
   rechargeMessage,
   leechSeedDrainsNow,
   drainLeechSeed,
+  eruptionPower,
+  applyRoost,
+  roostEndMessage,
   AQUA_RING_HEAL_RATIO,
   THROAT_CHOP_TURNS,
   TRI_ATTACK_STATUSES,
