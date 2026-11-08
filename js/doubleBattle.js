@@ -227,6 +227,17 @@ let leaveInFlight = false;
 let sawBattle = false;
 async function leaveBattle() {
   if (leaveInFlight || !latestRoom) return;
+  // 관전자는 전투 진행 여부와 상관없이 관전자 목록에서 빠지고 바로 나간다.
+  if (!myKey) {
+    leaveInFlight = true;
+    try {
+      await vacateSeat(roomRef, latestRoom, myUid);
+    } catch (e) {
+      console.error(e);
+    }
+    location.href = "../main.html";
+    return;
+  }
   const alreadyReset = sawBattle && !latestRoom.game_started;
   if (!latestRoom.battle_winner && !alreadyReset) return;
 
@@ -247,7 +258,7 @@ function renderLeaveButton(room) {
   const btn = $("leaveBtn");
   if (!btn) return;
   if (room.game_started) sawBattle = true;
-  const canLeave = !!room.battle_winner || (sawBattle && !room.game_started);
+  const canLeave = !myKey || !!room.battle_winner || (sawBattle && !room.game_started);
   btn.style.display = canLeave ? "inline-block" : "none";
   btn.onclick = () => {
     playButtonSound();
@@ -623,7 +634,7 @@ function renderBench(room) {
 
   entry.forEach((pkmn, idx) => {
     if (!pkmn) return;
-    if (idx === activeIdx && !pendingSwitch) return;
+    const isActive = idx === activeIdx && !pendingSwitch; // 출전 중인 포켓몬도 볼로 표시하되 누를 수는 없음
 
     const isFainted = pkmn.hp <= 0;
     const usable = (canForcedSwitch || canVoluntarySwitch || canPivotSwitch) && !isFainted && idx !== activeIdx;
@@ -632,6 +643,7 @@ function renderBench(room) {
     btn.type = "button";
     btn.disabled = !usable;
     if (isFainted) btn.classList.add("fainted");
+    if (isActive) btn.classList.add("active");
     btn.append(el("span", "bench-name", formatPokemonName(pkmn)), el("span", "bench-hp", `${pkmn.hp}/${pkmn.maxHp}`));
     btn.onclick = () => {
       playButtonSound();
