@@ -815,6 +815,11 @@ function processBoardQueue() {
     return;
   }
 
+  if (step.kind === "atkDice") {
+    playAttackDice(step.dice).then(next);
+    return;
+  }
+
   if (step.kind === "dice") {
     diceRolling = true;
     roundStartNames = step.names;
@@ -906,8 +911,21 @@ function renderLogAndBoard(room, isNewRound = false) {
   const steps = [];
 
   linesToQueue.forEach((text, i) => {
-    steps.push({ kind: "log", text });
     const absoluteIdx = startIdx + i;
+    // 공격 1d10 주사위는 그 줄("~의 기술!")보다 먼저 재생. 범위기는 대상마다 따로 굴리므로 대상별로 박스를 띄움
+    const rollHits = newEvents.filter((ev) => ev.logIndex === absoluteIdx && ev.type === "hit" && ev.rolls?.length);
+    if (rollHits.length > 0) {
+      const dice = [];
+      for (const ev of rollHits) {
+        const targetName = activeOf(room, ev.side)?.name ?? displayName(ev.side, room);
+        ev.rolls.forEach((roll, h) => {
+          const hitLabel = ev.rolls.length > 1 ? `${h + 1}타` : "공격";
+          dice.push({ label: rollHits.length > 1 ? `${targetName} ${hitLabel}` : hitLabel, roll });
+        });
+      }
+      steps.push({ kind: "atkDice", dice });
+    }
+    steps.push({ kind: "log", text });
     for (const ev of newEvents) {
       if (ev.logIndex !== absoluteIdx) continue;
       const k = ev.side;
@@ -974,11 +992,10 @@ function renderResult(room) {
 }
 
 // ---- 주사위: 필드의 포켓몬 수만큼 동시에 굴려서 저장된 값으로 착지 ----
-function animateOneDice(node, finalValue) {
+function animateOneDice(node, finalValue, duration = 1200) {
   return new Promise((resolve) => {
     let elapsed = 0;
     const interval = 10;
-    const duration = 1200;
     const timer = setInterval(() => {
       node.textContent = Math.floor(Math.random() * 10) + 1;
       elapsed += interval;
@@ -992,6 +1009,29 @@ function animateOneDice(node, finalValue) {
       }
     }, interval);
   });
+}
+
+// 공격 1d10: dice = [{ label, roll }]
+async function playAttackDice(dice) {
+  const diceRow = $("diceRow");
+  diceRow.replaceChildren();
+  const numbers = dice.map(({ label }) => {
+    const box = el("div", "dice-box");
+    box.append(el("div", "dice-name", label));
+    const num = el("div", "dice-number", "-");
+    box.append(num);
+    diceRow.append(box);
+    return num;
+  });
+  diceRow.style.display = "grid";
+
+  await Promise.all(dice.map(({ roll }, i) => animateOneDice(numbers[i], roll, 800)));
+
+  diceSound.currentTime = 0;
+  diceSound.play().catch(() => {});
+
+  await new Promise((resolve) => setTimeout(resolve, 500));
+  diceRow.style.display = "none";
 }
 
 async function playDiceRoll(rolls) {

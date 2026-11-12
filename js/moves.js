@@ -1,4 +1,5 @@
 // moves.js
+// priority: 선제 순위(기본 0). 싱글배틀에서 두 쪽 다 기술을 쓰면 priority가 높은 쪽이 다이스 없이 먼저 행동한다 (교체는 여전히 기술보다 먼저).
 export const MOVES = {
   // ───── 랭크 전용 기술 ─────
   "칼춤":     { power: 0, type: "노말", accuracy: 100, alwaysHit: true, effect: null,
@@ -15,7 +16,7 @@ export const MOVES = {
                 rank: { atk: 1, spd: 1, turns: 2 } },
 
   // ───── 노말 ─────
-  "전광석화":   { power: 30, type: "노말", accuracy: 100, alwaysHit: true,  effect: null },
+  "전광석화":   { power: 30, type: "노말", accuracy: 100, alwaysHit: true,  effect: null, priority: 1 },
   "힘껏치기":   { power: 50, type: "노말", accuracy: 75,  alwaysHit: false, effect: null },
   "메가톤펀치":   { power: 50, type: "노말", accuracy: 85,  alwaysHit: false, effect: null },
   "테라버스트":   { power: 50, type: "노말", accuracy: 100,  alwaysHit: false, effect: null },

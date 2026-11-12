@@ -490,7 +490,7 @@ const HIT_ANIM_DELAY_MS = 350; // 로그 타이핑이 끝난 뒤 shake/blink 연
 let renderedLogCount = 0; // 지금까지 큐에 반영한 로그 줄 수
 let renderedEventCount = 0; // 지금까지 큐에 반영한 연출 이벤트 수
 let boardInitialized = false; // 최초 진입/재접속 시엔 연출 없이 즉시 표시
-let boardQueue = []; // { kind: "dice", mineRoll, enemyRoll } | { kind: "log", text } | { kind: "hit"|"switch", side, pkmn, idx, hasAttacker? } | { kind: "status", side, status } | { kind: "heal", side, hp }
+let boardQueue = []; // { kind: "dice", mineRoll, enemyRoll } | { kind: "atkDice", rolls } | { kind: "log", text } | { kind: "hit"|"switch", side, pkmn, idx, hasAttacker? } | { kind: "status", side, status } | { kind: "heal", side, hp }
 let boardBusy = false;
 
 function trimLogLines(el) {
@@ -576,6 +576,12 @@ function processBoardQueue() {
   if (step.kind === "dice") {
     // 양쪽 행동이 다 정해진 뒤 GM이 굴린 선공 다이스. "~의 선공!" 줄 바로 앞에서 재생
     playDiceRoll(step.mineRoll, step.enemyRoll).then(next);
+    return;
+  }
+
+  if (step.kind === "atkDice") {
+    // 공격 기술의 1d10. "~의 기술!" 줄과 피격 연출보다 먼저 재생
+    playAttackDice(step.rolls).then(next);
     return;
   }
 
@@ -687,6 +693,11 @@ function renderLogAndBoard(room) {
       if (ev.logIndex !== absoluteIdx || ev.type !== "dice") continue;
       boardQueue.push({ kind: "dice", mineRoll: ev[mineKey], enemyRoll: ev[enemyKey] });
     }
+    // 공격 1d10 주사위도 그 줄("~의 기술!")보다 먼저 재생
+    for (const ev of newEvents) {
+      if (ev.logIndex !== absoluteIdx || ev.type !== "hit" || !ev.rolls?.length) continue;
+      boardQueue.push({ kind: "atkDice", rolls: ev.rolls });
+    }
     boardQueue.push({ kind: "log", text });
 
     for (const ev of newEvents) {
@@ -774,12 +785,11 @@ function renderResult(room) {
 }
 
 // 다이스 한 개를 finalValue로 멈추는 애니메이션 (숫자 빠르게 돌다가 착지)
-function animateOneDice(elId, finalValue) {
+function animateOneDice(elId, finalValue, duration = 1200) {
   return new Promise((resolve) => {
     const el = document.getElementById(elId);
     let elapsed = 0;
     const interval = 10;
-    const duration = 1200;
     const timer = setInterval(() => {
       el.textContent = Math.floor(Math.random() * 10) + 1;
       elapsed += interval;
@@ -793,6 +803,38 @@ function animateOneDice(elId, finalValue) {
       }
     }, interval);
   });
+}
+
+// 공격 1d10: 선공 다이스 박스 대신 공격 주사위 박스(연속 공격이면 타수만큼)를 띄워 실제 굴린 값으로 착지시킴
+async function playAttackDice(rolls) {
+  const diceRow = document.getElementById("diceRow");
+  const normal = [...diceRow.children];
+  normal.forEach((c) => { c.style.display = "none"; });
+  const boxes = rolls.map((_, i) => {
+    const box = document.createElement("div");
+    box.className = "dice-box";
+    const name = document.createElement("div");
+    name.className = "dice-name";
+    name.textContent = rolls.length > 1 ? `${i + 1}타` : "공격";
+    const num = document.createElement("div");
+    num.className = "dice-number";
+    num.id = `dice-atk-${i}`;
+    num.textContent = "-";
+    box.append(name, num);
+    diceRow.append(box);
+    return box;
+  });
+  diceRow.style.display = "flex";
+
+  await Promise.all(rolls.map((roll, i) => animateOneDice(`dice-atk-${i}`, roll, 800)));
+
+  diceSound.currentTime = 0;
+  diceSound.play().catch(() => {});
+
+  await new Promise((resolve) => setTimeout(resolve, 500)); // 결과 잠깐 보여주기
+  diceRow.style.display = "none";
+  boxes.forEach((b) => b.remove());
+  normal.forEach((c) => { c.style.display = ""; });
 }
 
 // 양쪽 주사위를 동시에 굴려서 실제 저장된 값(mineRoll, enemyRoll)으로 착지시킴

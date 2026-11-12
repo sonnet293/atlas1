@@ -217,8 +217,8 @@ function diveMessage(name, moveData) {
 // 최종 피해량 = ((위력 + 자신의 방어력x2x자신의방어랭크보정 + 1d10) x 타입상성 x 자속) - (상대 방어력x5 x 상대방어랭크보정)
 const BODY_PRESS_SELF_DEF_MULT = 2;
 const BODY_PRESS_TARGET_DEF_MULT = 5;
-function bodyPressRawDamage(power, attacker, defender, selfDefMult, defMult, typeMult, stab) {
-  return (power + (attacker.def ?? 0) * BODY_PRESS_SELF_DEF_MULT * selfDefMult + rollD10()) * typeMult * stab -
+function bodyPressRawDamage(power, attacker, defender, selfDefMult, defMult, typeMult, stab, roll = rollD10()) {
+  return (power + (attacker.def ?? 0) * BODY_PRESS_SELF_DEF_MULT * selfDefMult + roll) * typeMult * stab -
     (defender.def ?? 0) * BODY_PRESS_TARGET_DEF_MULT * defMult;
 }
 
@@ -1127,6 +1127,7 @@ export function useMove(room, myKey, moveIdx, uTurnIdx = null) {
           let newHp = updatedDefender.hp;
           let dmg = 0; // 이번 기술로 준 총 데미지
           let hits = 0;
+          const rolls = []; // 실제로 굴린 공격 1d10 (클라이언트가 피격 연출 전에 주사위로 보여줌)
           while (hits < hitCount && newHp > 0) {
             let hitDmg;
             let isCrit = false;
@@ -1135,9 +1136,11 @@ export function useMove(room, myKey, moveIdx, uTurnIdx = null) {
             } else if (multiHit?.fixedDamage) {
               hitDmg = typeMult === 0 ? 0 : multiHit.fixedDamage;
             } else {
+              const roll = rollD10();
+              rolls.push(roll);
               const rawDamage = moveData.bodyPress
-                ? bodyPressRawDamage(power, attacker, defender, rankMultiplier(getEffectiveRank(myRanks, "def", currentTurn)), defMult, typeMult, stab)
-                : (power + atkStat * 4 + rollD10()) * dmgAtkMult * typeMult * stab * weatherMult -
+                ? bodyPressRawDamage(power, attacker, defender, rankMultiplier(getEffectiveRank(myRanks, "def", currentTurn)), defMult, typeMult, stab, roll)
+                : (power + atkStat * 4 + roll) * dmgAtkMult * typeMult * stab * weatherMult -
                   defender.def * 3 * defMult;
               isCrit = rollCrit(attacker);
               hitDmg = Math.max(0, Math.round(rawDamage * (isCrit ? 1.5 : 1) * screenMult * undergroundMult));
@@ -1152,7 +1155,9 @@ export function useMove(room, myKey, moveIdx, uTurnIdx = null) {
           // lastHitRound: 이번 라운드에 상대의 공격 기술에 맞았다는 표시 (눈사태 위력 판정용)
           // lastDamageTaken: 상대의 공격 기술로 마지막에 받은 데미지 (카운터용, 라운드가 바뀌어도 유지)
           updatedDefender = { ...updatedDefender, hp: newHp, lastHitRound: currentTurn, lastDamageTaken: dmg };
-          events.push({ logIndex: moveLogIndex, type: "hit", side: oppKey, hp: newHp, status: defender.status ?? null, hasAttacker: true });
+          const hitEvent = { logIndex: moveLogIndex, type: "hit", side: oppKey, hp: newHp, status: defender.status ?? null, hasAttacker: true };
+          if (rolls.length > 0) hitEvent.rolls = rolls;
+          events.push(hitEvent);
 
           if (typeMult === 0) log.push(`${defenderName}에게는 효과가 없는 듯하다...`);
           else if (typeMult > 1) log.push("효과가 굉장했다!");
@@ -1664,6 +1669,13 @@ function skipAction(room, side, message) {
   return { ...advance, p1_entry: entries.p1, p2_entry: entries.p2, battle_log: log, battle_event_log: events };
 }
 
+// 고른 행동의 선제 순위. 기술이면 MOVES[기술].priority (기본 0), 교체는 0 (교체 우선은 resolveRound에서 따로 처리)
+function choicePriority(pkmn, choice) {
+  if (choice.kind !== "move") return 0;
+  const moveName = pkmn?.moves?.[choice.moveIdx]?.name;
+  return MOVES[moveName]?.priority ?? 0;
+}
+
 // 양쪽 행동이 다 모이면: 순서 결정(다이스) -> 순서대로 실행 -> 라운드 종료/다음 라운드 선택 단계
 export function resolveRound(room, choices) {
   if (!isChoosePhase(room)) return fail("행동을 고를 수 있는 단계가 아님");
@@ -1680,9 +1692,14 @@ export function resolveRound(room, choices) {
 
   const p1Switch = choices.p1.kind === "switch";
   const p2Switch = choices.p2.kind === "switch";
+  const p1Priority = choicePriority(p1Active, choices.p1);
+  const p2Priority = choicePriority(p2Active, choices.p2);
   if (p1Switch !== p2Switch) {
     // 한쪽만 교체: 교체가 먼저 (다이스 없음)
     order = p1Switch ? ["p1", "p2"] : ["p2", "p1"];
+  } else if (p1Priority !== p2Priority) {
+    // 둘 다 기술인데 선제 순위(priority)가 다름: 높은 쪽이 먼저 (다이스/선공 로그 없음)
+    order = p1Priority > p2Priority ? ["p1", "p2"] : ["p2", "p1"];
   } else {
     const { first, r1, r2 } = decideFirst(p1Active, p2Active);
     order = first === "p1" ? ["p1", "p2"] : ["p2", "p1"];

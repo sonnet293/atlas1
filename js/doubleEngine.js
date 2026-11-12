@@ -227,9 +227,10 @@ const wideGuardActive = (c, team) => c.fields[team]?.wideGuard?.turn === c.turn;
 // 필드에서 싸우고 있는 나와 아군 (나 먼저)
 const teamInBattle = (c, k) => [k, allyOf(k)].filter((x) => inBattle(c, x));
 
-function pushHit(c, k, pokemon, hasAttacker, logIndex = c.log.length - 1, attacker = null) {
+function pushHit(c, k, pokemon, hasAttacker, logIndex = c.log.length - 1, attacker = null, rolls = null) {
   const ev = { logIndex, type: "hit", side: k, hp: pokemon.hp, status: pokemon.status ?? null, hasAttacker };
   if (attacker) ev.attacker = attacker;
+  if (rolls?.length) ev.rolls = rolls; // 실제로 굴린 공격 1d10 (클라이언트가 피격 연출 전에 주사위로 보여줌)
   c.events.push(ev);
 }
 
@@ -732,6 +733,7 @@ function hitOne(c, myKey, t, moveSlot, moveData, s) {
     const undergroundMult = hitsUnderground(defender, moveData) ? UNDERGROUND_HIT_MULT : 1; // 땅속의 대상에게 지진류
     let newHp = updated.hp;
     let hits = 0;
+    const rolls = [];
     while (hits < hitCount && newHp > 0) {
       let hitDmg;
       let isCrit = false;
@@ -740,9 +742,11 @@ function hitOne(c, myKey, t, moveSlot, moveData, s) {
       } else if (multiHit?.fixedDamage) {
         hitDmg = typeMult === 0 ? 0 : Math.round(multiHit.fixedDamage * spreadMult);
       } else {
+        const roll = rollD10();
+        rolls.push(roll);
         const rawDamage = moveData.bodyPress
-          ? bodyPressRawDamage(power, attacker, defender, rankMultiplier(getEffectiveRank(c.ranks[myKey], "def", c.turn)), defMult, typeMult, stab)
-          : (power + atkStat * 4 + rollD10()) * dmgAtkMult * typeMult * stab * weatherMult -
+          ? bodyPressRawDamage(power, attacker, defender, rankMultiplier(getEffectiveRank(c.ranks[myKey], "def", c.turn)), defMult, typeMult, stab, roll)
+          : (power + atkStat * 4 + roll) * dmgAtkMult * typeMult * stab * weatherMult -
             defender.def * 3 * defMult;
         isCrit = rollCrit(attacker);
         hitDmg = Math.max(0, Math.round(rawDamage * (isCrit ? 1.5 : 1) * screenMult * spreadMult * undergroundMult));
@@ -755,7 +759,7 @@ function hitOne(c, myKey, t, moveSlot, moveData, s) {
     }
 
     updated = { ...updated, hp: newHp, lastHitRound: c.turn, lastDamageTaken: dmg, lastHitBy: myKey };
-    pushHit(c, t, { ...updated, status: defender.status ?? null }, true, s.moveLogIndex, myKey);
+    pushHit(c, t, { ...updated, status: defender.status ?? null }, true, s.moveLogIndex, myKey, rolls);
 
     const eff = effectivenessLine(typeMult, dn, s.multi);
     if (eff) c.log.push(eff);
