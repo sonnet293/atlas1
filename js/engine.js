@@ -259,7 +259,7 @@ function roostEndMessage(name) {
 }
 
 // 파괴광선류(hyperBeam): 맞히면 다음 라운드엔 반동으로 행동 불가. recharge: { turn: 행동할 수 없는 라운드 }
-function isRecharging(pokemon, currentTurn) {
+export function isRecharging(pokemon, currentTurn) {
   return pokemon?.recharge?.turn === currentTurn;
 }
 
@@ -380,13 +380,16 @@ function buildRankChangeMessage(name, statLabel, oldValue, newValue, wasIncrease
   return `${name}의 ${statLabel}${josa(statLabel, "이가")} ${-delta} 하락했다!`;
 }
 
-function decideFirst(p1Active, p2Active) {
+// 선공 판정 점수 = spd + 속도 랭크(-3~+3, 아직 유효한 것만) + 1d10
+function decideFirst(p1Active, p2Active, p1Ranks, p2Ranks, currentTurn) {
+  const speed1 = (p1Active.spd ?? 0) + getEffectiveRank(p1Ranks, "evasion", currentTurn);
+  const speed2 = (p2Active.spd ?? 0) + getEffectiveRank(p2Ranks, "evasion", currentTurn);
   let score1, score2, r1, r2;
   for (let i = 0; i < 20; i++) {
     r1 = rollD10();
     r2 = rollD10();
-    score1 = p1Active.spd + r1;
-    score2 = p2Active.spd + r2;
+    score1 = speed1 + r1;
+    score2 = speed2 + r2;
     if (score1 !== score2) break;
   }
   return { first: score1 > score2 ? "p1" : "p2", r1, r2 };
@@ -1610,7 +1613,7 @@ export function switchPokemon(room, myKey, targetIdx) {
 
 // ---- 라운드 진행 (포켓몬식) ----
 // 1) 양쪽이 이번 라운드 행동(기술 또는 교체)을 먼저 고른다. 방 문서엔 "골랐는지"(요청 id)만 남겨 상대에게 숨긴다.
-// 2) 둘 다 고르면 다이스(스피드 + 1d10)로 선공/후공을 정한다. 교체는 기술보다 항상 먼저 실행된다.
+// 2) 둘 다 고르면 다이스(스피드 + 속도 랭크 + 1d10)로 선공/후공을 정한다. 교체는 기술보다 항상 먼저 실행된다.
 // 3) 고른 행동을 순서대로 실행한다. 실제 판정은 기존 useMove/switchPokemon이 그대로 담당한다.
 //    choice: { kind: "move", moveIdx, switchIdx? (유턴류 교체 대상) } | { kind: "switch", targetIdx }
 
@@ -1701,7 +1704,7 @@ export function resolveRound(room, choices) {
     // 둘 다 기술인데 선제 순위(priority)가 다름: 높은 쪽이 먼저 (다이스/선공 로그 없음)
     order = p1Priority > p2Priority ? ["p1", "p2"] : ["p2", "p1"];
   } else {
-    const { first, r1, r2 } = decideFirst(p1Active, p2Active);
+    const { first, r1, r2 } = decideFirst(p1Active, p2Active, room.p1_ranks, room.p2_ranks, room.round_no ?? 1);
     order = first === "p1" ? ["p1", "p2"] : ["p2", "p1"];
     update.p1_roll = r1;
     update.p2_roll = r2;
@@ -1766,58 +1769,3 @@ export function leaveBattle(room, uid) {
 
   return ok(update);
 }
-
-// 더블배틀 엔진(js/doubleEngine.js)이 같은 규칙으로 판정하도록 공유하는 내부 헬퍼/상수
-export {
-  rollD10,
-  clampRank,
-  rankMultiplier,
-  getEffectiveRank,
-  getDefenderTypeMultiplier,
-  moveTypeMultiplier,
-  crashDamage,
-  hasStab,
-  isAlwaysHit,
-  rollAccuracy,
-  healRatio,
-  rollEvasion,
-  rollCrit,
-  buildRankChangeMessage,
-  targetsOpponent,
-  futureSightDamage,
-  clearOnSwitchOut,
-  RANK_FIELD_MAP,
-  SOUND_MOVES,
-  FURY_CUTTER_MAX_POWER,
-  FURY_CUTTER_MAX_STACK,
-  SCREEN_TURNS,
-  SCREEN_DAMAGE_MULT,
-  COUNTER_MULT,
-  TRICKSTER_ATK_MULT,
-  VENOM_SHOCK_MULT,
-  CONDITIONAL_POWER_MULT,
-  GUTS_STATUSES,
-  CHARGE_POWER_MULT,
-  UNDERGROUND_HIT_MULT,
-  hitsUnderground,
-  diveMessage,
-  bodyPressRawDamage,
-  isCharged,
-  isRecharging,
-  rechargeMessage,
-  leechSeedDrainsNow,
-  drainLeechSeed,
-  eruptionPower,
-  applyRoost,
-  roostEndMessage,
-  AQUA_RING_HEAL_RATIO,
-  THROAT_CHOP_TURNS,
-  TRI_ATTACK_STATUSES,
-  FUTURE_SIGHT_DELAY,
-  WISH_HEAL_RATIO,
-  TRAP_MIN_TURNS,
-  TRAP_MAX_TURNS,
-  TRAP_DAMAGE_RATIO,
-  GUARD_REPEAT_CHANCE,
-  TAUNT_TURNS,
-};

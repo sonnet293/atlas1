@@ -3,55 +3,27 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Nanum+Gothic+Coding:wght@400;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="css/style.css">
-    <link rel="stylesheet" href="css/main.css">
-    <title>VOYAGER // COMMAND CENTER</title>
+    <title>VOYAGER // 방 목록</title>
 </head>
-<body class="station page-main" data-backdrop="img/spacestation.jpg">
+<body>
 
     <header class="topbar">
-        <a href="main.html" class="brand"><i class="led on"></i><span>PROJECT : VOYAGER</span><small class="hide-sm">// VOYAGER NODE 03</small></a>
+        <a href="main.html">VOYAGER</a>
         <span class="grow"></span>
-        <span class="hide-sm">UTC <b data-clock>--:--:--</b></span>
-        <div class="topbar-actions">
-            <a href="profile.html" class="trainer-chip" title="Trainer Card">
-                <span class="initial avatar-box" id="trainer-initial">?</span>
-                <span class="label" id="trainer-name">Trainer</span>
-            </a>
-            <button type="button" class="text-btn" id="logoutBtn">[ DISCONNECT ]</button>
-        </div>
+        <a href="profile.html" title="트레이너 카드">
+            <span class="avatar-box" id="trainer-initial">?</span>
+            <span id="trainer-name">Trainer</span>
+        </a>
+        <button type="button" id="logoutBtn">로그아웃</button>
     </header>
 
-    <main class="main-wrap">
-        <div class="main-head">
-            <div>
-                <p class="cmdline"><span class="dim">trainer@voyager:~$</span> chamber --list</p>
-                <span class="eyebrow">SIMULATION</span>
-                <h1>CHAMBER</h1>
-            </div>
-            <div id="room-summary" class="room-summary"></div>
-        </div>
-
-        <nav class="room-pager" aria-label="방 페이지">
-            <button type="button" id="pager-prev" class="pager-arrow" aria-label="이전 방 목록">&lt;</button>
-            <span id="pager-label" class="pager-label">SINGLE BATTLE</span>
-            <span id="pager-dots" class="pager-dots"></span>
-            <button type="button" id="pager-next" class="pager-arrow" aria-label="다음 방 목록">&gt;</button>
-        </nav>
-
-        <!-- 방 3개씩 한 페이지. 옆으로 넘기면(스와이프/화살표) 다음 페이지 -->
-        <div id="room-grid" class="room-track"></div>
-
+    <main>
+        <h1>방 목록</h1>
+        <div id="room-summary" class="room-summary"></div>
+        <div id="room-grid"></div>
     </main>
 
-    <div class="crt" aria-hidden="true"></div>
-
-    <script src="js/hud.js" defer></script>
-    <script src="js/nebula.js" defer></script>
     <script type="module" src="js/main.js"></script>
-    
 </body>
 </html>

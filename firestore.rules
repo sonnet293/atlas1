@@ -29,12 +29,9 @@ service cloud.firestore {
         .affectedKeys().hasOnly([
           'player1_uid', 'player1_name', 'player1_ready',
           'player2_uid', 'player2_name', 'player2_ready',
-          'player3_uid', 'player3_name', 'player3_ready',
-          'player4_uid', 'player4_name', 'player4_ready',
           'spectators', 'spectator_names',
           'swap_request',
           'intro_ready_p1', 'intro_ready_p2',
-          'intro_ready_p3', 'intro_ready_p4',
           'intro_done'
         ]);
     }
@@ -116,13 +113,11 @@ service cloud.firestore {
           && request.resource.data.status == 'pending'
           && request.resource.data.type in [
             'init',
-            'move',
             'choose',
             'switch',
             'leave',
             'select',
-            'unselect',
-            'timeout'
+            'unselect'
           ]
           && request.resource.data.keys().hasOnly([
             'uid',
@@ -134,91 +129,6 @@ service cloud.firestore {
           ]);
 
         allow update, delete: if isGM();
-      }
-
-      // ===== 더블배틀 채팅 =====
-
-      match /chats/{channel}/messages/{msgId} {
-
-        function roomData() {
-          return get(
-            /databases/$(database)/documents/rooms/$(roomId)
-          ).data;
-        }
-
-        function isSpectator() {
-          return signedIn()
-            && request.auth.uid in
-              roomData().get('spectators', []);
-        }
-
-        function isTeamMember(team) {
-          return signedIn() && (
-            (
-              team == 't1'
-              && (
-                roomData().get('player1_uid', '') == request.auth.uid
-                || roomData().get('player2_uid', '') == request.auth.uid
-              )
-            )
-            ||
-            (
-              team == 't2'
-              && (
-                roomData().get('player3_uid', '') == request.auth.uid
-                || roomData().get('player4_uid', '') == request.auth.uid
-              )
-            )
-          );
-        }
-
-        function canWrite() {
-          return (
-            channel in ['t1', 't2']
-            && isTeamMember(channel)
-          )
-          || (
-            channel == 'spectator'
-            && isSpectator()
-          );
-        }
-
-        allow read: if isGM()
-          || (
-            signedIn()
-            && (
-              canWrite()
-              || (
-                isSpectator()
-                && channel in [
-                  't1',
-                  't2',
-                  'spectator'
-                ]
-              )
-            )
-          );
-
-        allow create: if signedIn()
-          && canWrite()
-          && request.resource.data.keys().hasOnly([
-            'uid',
-            'name',
-            'text',
-            'gameId',
-            'createdAt'
-          ])
-          && request.resource.data.uid == request.auth.uid
-          && request.resource.data.name is string
-          && request.resource.data.name.size() <= 20
-          && request.resource.data.text is string
-          && request.resource.data.text.size() > 0
-          && request.resource.data.text.size() <= 200
-          && request.resource.data.createdAt == request.time;
-
-        allow update: if false;
-
-        allow delete: if isGM();
       }
     }
   }

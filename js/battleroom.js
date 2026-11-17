@@ -8,9 +8,8 @@ import {
   updateDoc,
   onSnapshot,
   deleteField,
-  runTransaction,
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
-import { roomInfo, roomStatus, roomBgStyle, playerSlots, isDoubleRoom } from "./rooms.js";
+import { roomInfo, roomStatus, PLAYER_SLOTS } from "./rooms.js";
 import { vacateSeat } from "./roomLeave.js";
 import { fillAvatar } from "./avatar.js";
 import { syncPublicProfile } from "./publicProfile.js";
@@ -21,22 +20,13 @@ let myNickname = null;
 let myProfileImage = null;
 let latestRoom = null;
 
-// 싱글: player1~2, 더블(2:2 팀전): player1~4 (1·2번 vs 3·4번)
-const PLAYER_SLOTS = playerSlots(ROOM_ID);
+// player1 vs player2
 const isPlayerSlot = (slot) => PLAYER_SLOTS.includes(slot);
-
-// 더블: player1·2 = TEAM A, player3·4 = TEAM B. 대기실에서 상대 팀 자리로 옮기거나 상대 팀 플레이어와 자리를 바꿀 수 있다.
-const IS_DOUBLE = isDoubleRoom(ROOM_ID);
-const teamOfSlot = (slot) => (slot === "player1" || slot === "player2" ? "A" : "B");
-const isOtherTeamSlot = (mySlot, slot) =>
-    IS_DOUBLE && isPlayerSlot(mySlot) && isPlayerSlot(slot) && teamOfSlot(mySlot) !== teamOfSlot(slot);
 
 const info = roomInfo(ROOM_ID);
 if (info) {
     document.getElementById("room-name").textContent = info.name;
     document.title = `// ${info.name}`;
-    const bg = roomBgStyle(info, "../img/");
-    if (bg) document.getElementById("lobby-hero").style.setProperty("--room-bg", bg);
 }
 
 const el = (tag, className, text) => {
@@ -55,7 +45,7 @@ function calcMySlot(room) {
 }
 
 function slotLabel(slot) {
-    if (isPlayerSlot(slot)) return IS_DOUBLE ? `TEAM ${teamOfSlot(slot)} Player${slot.slice(-1)}` : `Player${slot.slice(-1)}`;
+    if (isPlayerSlot(slot)) return `Player${slot.slice(-1)}`;
     return "OBSERVE";
 }
 
@@ -164,21 +154,20 @@ function renderHint(room, mySlot) {
     const isPlayer = isPlayerSlot(mySlot);
     const allSeated = PLAYER_SLOTS.every((s) => !!room[`${s}_uid`]);
     const allReady = PLAYER_SLOTS.every((s) => !!room[`${s}_ready`]);
-    const many = PLAYER_SLOTS.length > 2;
 
     hintEl.innerHTML = "";
     if (room.game_started) {
         hintEl.append("배틀 화면으로 이동하는 중…");
     } else if (allSeated && allReady) {
-        hintEl.append(el("strong", null, many ? "모두 READY!" : "양쪽 모두 READY!"), " 곧 배틀이 시작됩니다.");
+        hintEl.append(el("strong", null, "양쪽 모두 READY!"), " 곧 배틀이 시작됩니다.");
     } else if (!allSeated) {
-        hintEl.append(many ? "트레이너 네 명이 모이길 기다리는 중입니다." : "상대 트레이너를 기다리는 중입니다.");
+        hintEl.append("상대 트레이너를 기다리는 중입니다.");
     } else if (isPlayer && room[`${mySlot}_ready`]) {
-        hintEl.append(many ? "다른 트레이너의 READY를 기다리는 중… " : "상대의 READY를 기다리는 중… ", "버튼을 다시 누르면 READY가 취소됩니다.");
+        hintEl.append("상대의 READY를 기다리는 중… ", "버튼을 다시 누르면 READY가 취소됩니다.");
     } else if (isPlayer) {
         hintEl.append("준비가 되면 ", el("strong", null, "READY"), "를 눌러주세요.");
     } else {
-        hintEl.append(many ? "플레이어가 모두 READY하면 배틀이 시작됩니다." : "플레이어가 모두 READY하면 배틀이 시작됩니다.");
+        hintEl.append("플레이어가 모두 READY하면 배틀이 시작됩니다.");
     }
 }
 
@@ -248,19 +237,12 @@ function renderPlayerRow(slot, room, mySlot) {
     if (uid) card.append(el("span", "ready-badge", ready ? "READY" : "WAITING"));
 
     const idle = !room.swap_request && !room.game_started;
-    // 관전자 -> 플레이어, 또는 (더블) 플레이어 -> 상대 팀 플레이어: 교체 요청
-    const canRequest = idle && uid && (mySlot === "spectator" || isOtherTeamSlot(mySlot, slot));
+    // 관전자 -> 플레이어: 교체 요청
+    const canRequest = idle && uid && mySlot === "spectator";
     if (canRequest) {
-        const btn = el("button", "btn btn-ghost btn-small", mySlot === "spectator" ? "교체 요청" : "자리 교체 요청");
+        const btn = el("button", "btn btn-ghost btn-small", "교체 요청");
         btn.type = "button";
         btn.onclick = () => requestSwap(slot, uid, name);
-        card.appendChild(btn);
-    }
-    // (더블) 상대 팀 빈자리: 바로 이동
-    if (idle && !uid && isOtherTeamSlot(mySlot, slot)) {
-        const btn = el("button", "btn btn-ghost btn-small", "이 자리로 이동");
-        btn.type = "button";
-        btn.onclick = () => moveToSlot(slot);
         card.appendChild(btn);
     }
 }
@@ -341,7 +323,7 @@ async function requestSwap(toSlot, toUid, toName) {
 
     const mySlot = calcMySlot(room);
     if (!mySlot || mySlot === toSlot) return;
-    if (mySlot !== "spectator" && toSlot !== "spectator" && !isOtherTeamSlot(mySlot, toSlot)) return;
+    if ((mySlot === "spectator") === (toSlot === "spectator")) return; // 관전자 <-> 플레이어만
 
     await updateDoc(roomRef, {
         swap_request: {
@@ -372,24 +354,6 @@ async function respondSwap(accepted) {
 
     if (!accepted) {
         await updateDoc(roomRef, { swap_request: deleteField() });
-        return;
-    }
-
-    // (더블) 플레이어끼리 자리 교체: 두 사람이 아직 그 자리에 있을 때만, 둘 다 READY 해제
-    if (isPlayerSlot(req.fromSlot) && isPlayerSlot(req.toSlot)) {
-        if (room[`${req.fromSlot}_uid`] !== req.fromUid || room[`${req.toSlot}_uid`] !== req.toUid) {
-            await updateDoc(roomRef, { swap_request: deleteField() });
-            return;
-        }
-        await updateDoc(roomRef, {
-            [`${req.fromSlot}_uid`]: req.toUid,
-            [`${req.fromSlot}_name`]: req.toName,
-            [`${req.fromSlot}_ready`]: false,
-            [`${req.toSlot}_uid`]: req.fromUid,
-            [`${req.toSlot}_name`]: req.fromName,
-            [`${req.toSlot}_ready`]: false,
-            swap_request: deleteField(),
-        });
         return;
     }
 
@@ -429,24 +393,6 @@ async function respondSwap(accepted) {
         spectators: newSpectators,
         spectator_names: newSpectatorNames,
         swap_request: deleteField(),
-    });
-}
-
-// (더블) 상대 팀 빈자리로 이동. 동시에 같은 자리를 노릴 수 있어서 트랜잭션으로 처리.
-async function moveToSlot(toSlot) {
-    await runTransaction(db, async (tx) => {
-        const room = (await tx.get(roomRef)).data();
-        if (!room || room.game_started || room.swap_request || room[`${toSlot}_uid`]) return;
-        const mySlot = calcMySlot(room);
-        if (!isOtherTeamSlot(mySlot, toSlot)) return;
-        tx.update(roomRef, {
-            [`${mySlot}_uid`]: null,
-            [`${mySlot}_name`]: null,
-            [`${mySlot}_ready`]: false,
-            [`${toSlot}_uid`]: myUid,
-            [`${toSlot}_name`]: myNickname,
-            [`${toSlot}_ready`]: false,
-        });
     });
 }
 

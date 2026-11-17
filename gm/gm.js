@@ -1,7 +1,7 @@
 // gm/gm.js
 // GM 브라우저 = 권한 서버. 모든 방의 요청(rooms/{roomId}/actions)을 구독해서
-// 싱글배틀 방은 js/engine.js, 더블배틀 방(js/rooms.js의 mode: "double")은 js/doubleEngine.js로 판정한 뒤,
-// 방 상태 갱신과 요청 처리 완료 표시를 한 트랜잭션으로 반영한다. (한 창에서 두 모드를 모두 처리)
+// js/engine.js로 판정한 뒤, 방 상태 갱신과 요청 처리 완료 표시를 한 트랜잭션으로 반영한다.
+// js/rooms.js의 ROOMS에 있는 방만 처리한다.
 import { auth, db } from "../js/firebase.js";
 import {
   onAuthStateChanged,
@@ -32,13 +32,12 @@ import {
   submitChoice,
   resolveRound,
 } from "../js/engine.js";
-import * as Double from "../js/doubleEngine.js";
-import { isDoubleRoom } from "../js/rooms.js";
+import { roomInfo } from "../js/rooms.js";
 
 const LOG_MAX_LINES = 200;
 
 // 처리 끝난 요청은 Firestore TTL 정책(actions 컬렉션 그룹, expireAt 필드)이 이 시각 뒤에 자동 삭제한다.
-// 포켓몬 선택 요청은 네 명이 다 고를 때까지 다시 읽으므로 넉넉히 하루 둔다.
+// 포켓몬 선택 요청은 상대가 고를 때까지 다시 읽으므로 넉넉히 하루 둔다.
 const ACTION_TTL_MS = 24 * 60 * 60 * 1000;
 const actionExpireAt = () => Timestamp.fromMillis(Date.now() + ACTION_TTL_MS);
 
@@ -46,7 +45,6 @@ const roomListeners = new Map(); // roomId -> unsubscribe (actions 구독)
 const startInFlight = new Set(); // 게임 시작 트랜잭션 진행 중인 roomId
 const queued = new Set(); // 큐에 들어간 "roomId/actionId"
 const queue = []; // { roomId, actionId }
-const turnWatch = new Map(); // 더블배틀 roomId -> { key, timer } (턴 제한시간 감시)
 let busy = false;
 let unsubRooms = null;
 
@@ -91,11 +89,6 @@ function renderRooms(rooms) {
   rooms.forEach(({ id, room }) => {
     const row = document.createElement("div");
     row.className = "room-row";
-    if (isDoubleRoom(id)) {
-      row.textContent = `${id} [DOUBLE] | ${doubleRoomSummary(room)}`;
-      el.appendChild(row);
-      return;
-    }
     const state = room.battle_winner
       ? `종료 (${room.battle_winner} 승)`
       : room.game_started && room.select_phase
@@ -106,19 +99,6 @@ function renderRooms(rooms) {
     row.textContent = `${id} | ${room.player1_name ?? "-"} vs ${room.player2_name ?? "-"} | ${state}`;
     el.appendChild(row);
   });
-}
-
-function doubleRoomSummary(room) {
-  const ox = (field) => Double.DOUBLE_SIDES.map((k) => (room[field(k)] ? "O" : "X")).join("");
-  const players = `${Double.teamName("t1", room)} vs ${Double.teamName("t2", room)}`;
-  const state = room.battle_winner
-    ? `종료 (${room.battle_winner} 승)`
-    : room.game_started && room.select_phase
-      ? `포켓몬 선택 중 · 완료 ${ox((k) => `${k}_select_action`)}`
-    : room.game_started
-      ? `진행 중 · 라운드 ${room.round_no ?? 0} · 턴 ${room.battle_turn ?? "-"}`
-      : `대기 · READY ${ox((k) => `${Double.slotOf(k)}_ready`)}`;
-  return `${players} | ${state}`;
 }
 
 // ---- 로그인 ----
@@ -192,12 +172,11 @@ function startServer() {
   unsubRooms = onSnapshot(
     collection(db, "rooms"),
     (snap) => {
-      const rooms = snap.docs.map((d) => ({ id: d.id, room: d.data() }));
+      const rooms = snap.docs.filter((d) => roomInfo(d.id)).map((d) => ({ id: d.id, room: d.data() }));
       renderRooms(rooms);
       for (const { id, room } of rooms) {
         watchActions(id);
         maybeStartGame(id, room);
-        if (isDoubleRoom(id)) watchTurnTimeout(id, room);
       }
     },
     (err) => gmLog(`rooms 구독 실패: ${err.message}`, "error")
@@ -209,47 +188,6 @@ function stopServer() {
   unsubRooms = null;
   roomListeners.forEach((unsub) => unsub());
   roomListeners.clear();
-  turnWatch.forEach(({ timer }) => clearTimeout(timer));
-  turnWatch.clear();
-}
-
-// ---- 더블배틀 턴 제한시간 ----
-// 같은 차례(turnWaitKey)가 제한시간 + 여유시간 동안 바뀌지 않으면 그 플레이어 대신 자동 행동.
-// 보통은 플레이어 화면이 30초에 먼저 timeout 요청을 보내고, 이건 화면을 닫았거나 연결이 끊긴 경우용.
-function watchTurnTimeout(roomId, room) {
-  const key = Double.turnWaitKey(room);
-  const cur = turnWatch.get(roomId);
-  if (cur?.key === key) return;
-  if (cur) clearTimeout(cur.timer);
-  if (!key) {
-    turnWatch.delete(roomId);
-    return;
-  }
-  const timer = setTimeout(
-    () => forceTurnTimeout(roomId, key),
-    Double.TURN_TIME_LIMIT_MS + Double.TURN_TIMEOUT_GRACE_MS
-  );
-  turnWatch.set(roomId, { key, timer });
-}
-
-async function forceTurnTimeout(roomId, key) {
-  const roomRef = doc(db, "rooms", roomId);
-  try {
-    const result = await runTransaction(db, async (tx) => {
-      const room = (await tx.get(roomRef)).data();
-      if (!room || Double.turnWaitKey(room) !== key) return null; // 그사이 행동함
-      const side = room.battle_turn;
-      const verdict = Double.autoAct(room, side);
-      if (verdict.ok) tx.update(roomRef, stripUndefined(verdict.update).value);
-      return { side, verdict };
-    });
-    if (!result) return;
-    if (result.verdict.ok) gmLog(`${roomId}/${result.side} 시간 초과 → 자동 행동`);
-    else gmLog(`${roomId}/${result.side} 시간 초과 자동 행동 실패: ${result.verdict.reason}`, "warn");
-  } catch (err) {
-    gmLog(`${roomId} 시간 초과 처리 실패: ${err.message}`, "error");
-    console.error(err);
-  }
 }
 
 // 방마다 pending 요청을 구독. 창을 다시 켜면 쌓여 있던 pending 요청부터 이어서 처리된다.
@@ -295,8 +233,7 @@ async function drain() {
 }
 
 // 요청 종류별 판정. 반환값은 engine과 같은 { ok, update } | { ok: false, reason }
-function judge(roomId, room, action) {
-  if (isDoubleRoom(roomId)) return judgeDouble(room, action);
+function judge(room, action) {
   const side = sideOfUid(room, action.uid);
   const payload = action.payload ?? {};
   const isPlayer = side === "p1" || side === "p2";
@@ -323,79 +260,9 @@ function judge(roomId, room, action) {
   }
 }
 
-// 더블배틀 방 요청 판정 (js/doubleEngine.js)
-function judgeDouble(room, action) {
-  const side = Double.sideOfUid(room, action.uid);
-  const payload = action.payload ?? {};
-  const isPlayer = Double.DOUBLE_SIDES.includes(side);
-  const sameRound = (action.round_no ?? 0) === (room.round_no ?? 0);
-
-  switch (action.type) {
-    case "init":
-      if (side !== "p1") return { ok: false, reason: "player1만 첫 라운드를 시작할 수 있음" };
-      return Double.initRound(room);
-    case "move":
-      if (!isPlayer) return { ok: false, reason: "플레이어가 아님" };
-      if (!sameRound) return { ok: false, reason: "지난 라운드의 요청" };
-      if (!Number.isInteger(payload.moveIdx)) return { ok: false, reason: "잘못된 기술 번호" };
-      return Double.useMove(room, side, payload.moveIdx, payload.target ?? null, payload.switchIdx ?? null);
-    case "switch":
-      if (!isPlayer) return { ok: false, reason: "플레이어가 아님" };
-      if (!sameRound) return { ok: false, reason: "지난 라운드의 요청" };
-      if (!Number.isInteger(payload.targetIdx)) return { ok: false, reason: "잘못된 교체 대상" };
-      return Double.switchPokemon(room, side, payload.targetIdx);
-    case "timeout": // 플레이어 화면에서 제한시간이 끝남 -> 자동 행동 (고르던 기술/대상이 있으면 우선)
-      if (!isPlayer) return { ok: false, reason: "플레이어가 아님" };
-      if (!sameRound) return { ok: false, reason: "지난 라운드의 요청" };
-      return Double.autoAct(room, side, payload.prefer ?? null);
-    case "unselect":
-      if (!isPlayer) return { ok: false, reason: "플레이어가 아님" };
-      return Double.cancelSelection(room, side);
-    case "leave":
-      return Double.leaveBattle(room, action.uid);
-    default:
-      return { ok: false, reason: `알 수 없는 요청: ${action.type}` };
-  }
-}
-
-// 더블배틀 포켓몬 선택: 네 명이 모두 완료하면 각자의 요청 picks로 배틀 엔트리를 만든다.
-async function judgeSelectDouble(tx, roomId, room, action, actionId) {
-  const side = Double.sideOfUid(room, action.uid);
-  if (!Double.DOUBLE_SIDES.includes(side)) return { ok: false, reason: "플레이어가 아님" };
-  const payload = action.payload ?? {};
-  if (payload.gameId !== room.game_started_at) return { ok: false, reason: "지난 게임의 선택" };
-
-  const myEntry = (await tx.get(doc(db, "users", action.uid))).data()?.entry ?? [];
-  const verdict = Double.submitSelection(room, side, actionId, payload.picks, myEntry);
-  if (!verdict.ok) return verdict;
-
-  const others = Double.DOUBLE_SIDES.filter((k) => k !== side);
-  if (others.some((k) => !room[`${k}_select_action`])) return verdict; // 아직 다 고르지 않음
-
-  const loaded = await Promise.all(others.map(async (k) => {
-    const [a, u] = await Promise.all([
-      tx.get(doc(db, "rooms", roomId, "actions", room[`${k}_select_action`])),
-      tx.get(doc(db, "users", room[`${Double.slotOf(k)}_uid`])),
-    ]);
-    return { k, entry: u.data()?.entry ?? [], picks: a.data()?.payload?.picks };
-  }));
-
-  // 그사이 엔트리 변경 등으로 무효가 된 선택은 그 플레이어만 다시 고르게 한다
-  const invalid = loaded.filter(({ entry, picks }) => !Array.isArray(picks) || picks.length !== Double.pickCount(entry));
-  if (invalid.length > 0) {
-    const reset = Object.fromEntries(invalid.map(({ k }) => [`${k}_select_action`, null]));
-    return { ok: true, update: { ...verdict.update, ...reset } };
-  }
-
-  const bySide = { [side]: { entry: myEntry, picks: payload.picks } };
-  for (const { k, entry, picks } of loaded) bySide[k] = { entry, picks };
-  return { ok: true, update: { ...verdict.update, ...Double.finishSelection(bySide) } };
-}
-
 // 포켓몬 선택 완료 요청: users 엔트리로 검증하고, 상대도 이미 완료했으면 양쪽 요청의 picks로 배틀 엔트리를 만든다.
 // (트랜잭션 안에서 읽기만 하고 쓰기는 processAction이 한다)
 async function judgeSelect(tx, roomId, room, action, actionId) {
-  if (isDoubleRoom(roomId)) return judgeSelectDouble(tx, roomId, room, action, actionId);
   const side = sideOfUid(room, action.uid);
   if (side !== "p1" && side !== "p2") return { ok: false, reason: "플레이어가 아님" };
   const payload = action.payload ?? {};
@@ -429,7 +296,6 @@ async function judgeSelect(tx, roomId, room, action, actionId) {
 // 싱글배틀 라운드 행동 선택: 내 선택을 검증해 방엔 요청 id만 남기고, 상대도 이미 골랐으면
 // 상대 요청의 선택을 읽어 다이스 -> 양쪽 행동 실행 -> 라운드 종료까지 한 번에 판정한다.
 async function judgeChoose(tx, roomId, room, action, actionId) {
-  if (isDoubleRoom(roomId)) return { ok: false, reason: "더블배틀 방에서는 지원하지 않는 요청" };
   const side = sideOfUid(room, action.uid);
   if (side !== "p1" && side !== "p2") return { ok: false, reason: "플레이어가 아님" };
   if ((action.round_no ?? 0) !== (room.round_no ?? 0)) return { ok: false, reason: "지난 라운드의 요청" };
@@ -469,7 +335,7 @@ async function processAction(roomId, actionId) {
         ? await judgeSelect(tx, roomId, room, action, actionId)
         : action.type === "choose"
           ? await judgeChoose(tx, roomId, room, action, actionId)
-          : judge(roomId, room, action);
+          : judge(room, action);
 
     let undefinedPaths = [];
     if (verdict.ok) {
@@ -480,8 +346,7 @@ async function processAction(roomId, actionId) {
     } else {
       tx.update(actionRef, { status: "rejected", reason: verdict.reason, processedAt: serverTimestamp(), expireAt: actionExpireAt() });
     }
-    const sideOf = isDoubleRoom(roomId) ? Double.sideOfUid : sideOfUid;
-    return { action, verdict, undefinedPaths, side: room ? sideOf(room, action.uid) : null };
+    return { action, verdict, undefinedPaths, side: room ? sideOfUid(room, action.uid) : null };
   });
 
   if (!result) return;
@@ -498,7 +363,6 @@ async function processAction(roomId, actionId) {
 
 // 양쪽 READY -> 양쪽 users 엔트리가 있는지 확인하고 게임 시작(포켓몬 선택 단계로)
 async function maybeStartGame(roomId, room) {
-  if (isDoubleRoom(roomId)) return maybeStartDoubleGame(roomId, room);
   if (!room.player1_ready || !room.player2_ready || room.game_started) return;
   if (startInFlight.has(roomId)) return;
   startInFlight.add(roomId);
@@ -519,34 +383,6 @@ async function maybeStartGame(roomId, room) {
       return true;
     });
     if (started) gmLog(`${roomId} 게임 시작`);
-  } catch (err) {
-    gmLog(`${roomId} 게임 시작 실패: ${err.message}`, "error");
-    console.error(err);
-  } finally {
-    startInFlight.delete(roomId);
-  }
-}
-
-// 더블배틀: 네 명 모두 READY -> 네 명의 users 엔트리가 있는지 확인하고 게임 시작(포켓몬 선택 단계로)
-async function maybeStartDoubleGame(roomId, room) {
-  const slots = Double.DOUBLE_SIDES.map(Double.slotOf);
-  if (room.game_started || !slots.every((s) => room[`${s}_ready`])) return;
-  if (startInFlight.has(roomId)) return;
-  startInFlight.add(roomId);
-
-  const roomRef = doc(db, "rooms", roomId);
-  try {
-    const started = await runTransaction(db, async (tx) => {
-      const fresh = (await tx.get(roomRef)).data();
-      if (!fresh || slots.some((s) => !fresh[`${s}_uid`])) return false;
-      const users = await Promise.all(slots.map((s) => tx.get(doc(db, "users", fresh[`${s}_uid`]))));
-      if (users.some((u) => !u.data()?.entry?.length)) return false;
-      const verdict = Double.startGame(fresh);
-      if (!verdict.ok) return false;
-      tx.update(roomRef, verdict.update);
-      return true;
-    });
-    if (started) gmLog(`${roomId} 더블배틀 시작`);
   } catch (err) {
     gmLog(`${roomId} 게임 시작 실패: ${err.message}`, "error");
     console.error(err);

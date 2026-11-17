@@ -2,6 +2,7 @@
 // 게임이 진행 중이 아닐 때 방에서 내 자리를 비운다 (로비 필드만 수정하므로 플레이어 권한으로 가능).
 // 플레이어가 나가면 관전자 중 한 명을 무작위로 그 자리에 올린다.
 import { updateDoc, deleteField } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+import { PLAYER_SLOTS } from "./rooms.js";
 
 export async function vacateSeat(roomRef, room, uid) {
     const req = room.swap_request;
@@ -11,8 +12,7 @@ export async function vacateSeat(roomRef, room, uid) {
 
     const spectators = room.spectators ?? [];
     const spectatorNames = room.spectator_names ?? [];
-    // 싱글은 player1~2, 더블은 player1~4 (싱글 방 문서엔 player3·4 필드가 없어서 걸리지 않음)
-    const slot = ["player1", "player2", "player3", "player4"].find((s) => room[`${s}_uid`] === uid) ?? null;
+    const slot = PLAYER_SLOTS.find((s) => room[`${s}_uid`] === uid) ?? null;
 
     if (slot) {
         if (spectators.length > 0) {

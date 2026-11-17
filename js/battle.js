@@ -31,7 +31,7 @@ const TYPE_COLORS = {
   드래곤: "#535ca8", 악: "#4c4948", 강철: "#69a9c7", 페어리: "#dab4d4",
 };
 
-// battleroom에 인트로 오버레이가 있는 페이지에서는, 인트로(양쪽 터치 + VS 연출)가 끝나기 전까지
+// 배틀 시작 대기 오버레이가 있는 페이지에서는, 양쪽 플레이어가 터치하기 전까지
 // 첫 라운드(행동 선택 단계)를 시작하지 않는다. intro.js가 끝나면 "battle:introDone"을 쏴준다.
 const hasIntro = !!document.getElementById("intro-overlay");
 let introReady = !hasIntro;
@@ -280,50 +280,20 @@ function updateHpBar(barId, textId, hp, maxHp, showNumbers) {
   if (txt) txt.innerText = showNumbers ? `HP: ${hp} / ${maxHp}` : "";
 }
 
-// mine/enemy 포트레이트를 갱신. animate가 true면 등장 슬라이드 애니메이션을 재생(교체 시에만 사용).
-function updatePortrait(prefix, pokemon, animate = false) {
+// mine/enemy 포트레이트를 갱신
+function updatePortrait(prefix, pokemon) {
   const img = document.getElementById(`${prefix}-portrait`);
   const placeholder = document.getElementById(`${prefix}-portrait-placeholder`);
   if (!img) return;
   if (!pokemon?.portrait) {
-    img.classList.remove("visible"); img.style.display = "none";
+    img.style.display = "none";
     if (placeholder) placeholder.style.display = "block"; return;
   }
   if (placeholder) placeholder.style.display = "none";
-  img.classList.remove("visible", "slide-in-mine", "slide-in-enemy");
   img.style.display = "block"; img.src = portraitUrl(pokemon.portrait); img.alt = pokemon.name;
-  setTimeout(() => {
-    img.classList.add("visible", ...(animate ? [prefix === "mine" ? "slide-in-mine" : "slide-in-enemy"] : []));
-  }, 80);
-}
-
-// 공격 연출: 공격자 플래시 + 화면 흔들림 + (짧은 딜레이 후) 피격자 흔들림
-function triggerAttackEffect(atkPfx, defPfx) {
-  return new Promise(resolve => {
-    const atkArea = document.getElementById(`${atkPfx}-pokemon-area`);
-    const defArea = document.getElementById(`${defPfx}-pokemon-area`);
-    const wrapper = document.getElementById("battle-wrapper");
-    if (atkArea) { atkArea.classList.add("attacker-flash"); atkArea.addEventListener("animationend", () => atkArea.classList.remove("attacker-flash"), { once: true }); }
-    if (wrapper) { wrapper.classList.add("screen-shake"); wrapper.addEventListener("animationend", () => wrapper.classList.remove("screen-shake"), { once: true }); }
-    setTimeout(() => {
-      if (defArea) { defArea.classList.add("defender-hit"); defArea.addEventListener("animationend", () => { defArea.classList.remove("defender-hit"); resolve(); }, { once: true }); }
-      else resolve();
-    }, 120);
-  });
-}
-
-// 도트 데미지(독/화상) 등 공격자가 없는 피해에 쓰는 단순 깜빡임 연출
-function triggerBlink(prefix) {
-  return new Promise(resolve => {
-    const area = document.getElementById(`${prefix}-pokemon-area`);
-    if (!area) { resolve(); return; }
-    area.classList.add("blink-damage");
-    area.addEventListener("animationend", () => { area.classList.remove("blink-damage"); resolve(); }, { once: true });
-  });
 }
 
 // mine/enemy 패널의 HP바/스탯/초상화를 즉시(연출 없이) 채워 넣음.
-// 슬라이드 인 연출이 필요하면 호출부에서 updatePortrait(side, pkmn, true)를 따로 호출한다.
 // 화면에 현재 표시 중인 포켓몬(연출 도중의 상태). status 연출이 이름 표시만 바꿀 때 사용.
 const shownPokemon = { mine: null, enemy: null };
 
@@ -384,7 +354,7 @@ function renderMoveButtons(room) {
     const chosen = !!room[`${myKey}_round_action`] && myChoice?.round === (room.round_no ?? 0) && myChoice.moveIdx === i;
     btn.classList.toggle("uturn-picking", uTurnPick === i || chosen);
     btn.style.display = "inline-flex";
-    btn.style.backgroundColor = TYPE_COLORS[moveData?.type] ?? "var(--accent)";
+    btn.style.backgroundColor = TYPE_COLORS[moveData?.type] ?? "#777";
     btn.style.opacity = usable ? "1" : "0.45";
     // 날씨에 따라 명중률이 바뀌는 기술(예: 번개/폭풍은 비일 때 필중, 폭풍은 쾌청일 때 50)은 현재 날씨 기준으로 표시
     const weatherType = room.weather?.type;
@@ -485,7 +455,7 @@ function renderBenchSide(dataKey, uiKey, room) {
 const LOG_MAX_LINES = 8;
 const LOG_TYPE_CHAR_MS = 18; // 한 글자 타이핑 간격
 const LOG_TYPE_GAP_MS = 80; // 한 스텝 끝난 후 다음 스텝 시작 전 여백
-const HIT_ANIM_DELAY_MS = 350; // 로그 타이핑이 끝난 뒤 shake/blink 연출 시작까지의 텀
+const HIT_DELAY_MS = 350; // 로그 타이핑이 끝난 뒤 HP바가 줄어들기까지의 텀
 
 let renderedLogCount = 0; // 지금까지 큐에 반영한 로그 줄 수
 let renderedEventCount = 0; // 지금까지 큐에 반영한 연출 이벤트 수
@@ -528,32 +498,6 @@ function typeLogLine(text, onDone) {
   typeNext();
 }
 
-let lastStepKind = null;
-
-// 피격 한 번의 정보 (배경 터미널용). 상성/급소는 이 피격 뒤에 이어지는 로그 줄에서 찾는다.
-function describeImpact(step) {
-  const before = shownPokemon[step.side];
-  const following = [];
-  for (const s of boardQueue) {
-    if (s.kind === "hit") break;
-    if (s.kind === "log") following.push(s.text);
-  }
-  const text = following.join("\n");
-  const effect = /효과가 없는/.test(text) ? "none"
-    : /효과가 굉장했다/.test(text) ? "super"
-    : /효과가 별로인/.test(text) ? "weak"
-    : "normal";
-  return {
-    hpBefore: before?.hp ?? step.pkmn.hp,
-    hpAfter: step.pkmn.hp,
-    maxHp: step.pkmn.maxHp || 1,
-    hidden: step.side === "enemy", // 상대 HP 숫자는 화면에도 숨기므로 퍼센트만
-    effect,
-    crit: /급소에 맞았다/.test(text),
-    attacker: !!step.hasAttacker,
-  };
-}
-
 function processBoardQueue() {
   if (boardBusy) return;
   if (boardQueue.length === 0) {
@@ -563,7 +507,6 @@ function processBoardQueue() {
   boardBusy = true;
   const step = boardQueue.shift();
   const next = () => {
-    lastStepKind = step.kind;
     boardBusy = false;
     setTimeout(processBoardQueue, LOG_TYPE_GAP_MS);
   };
@@ -586,19 +529,11 @@ function processBoardQueue() {
   }
 
   if (step.kind === "hit") {
-    // 배경 터미널(battleBg.js)에 공격/피격 로그 출력. 연속 공격은 첫 타에만 공격 로그
-    if (step.hasAttacker && lastStepKind !== "hit") document.dispatchEvent(new Event("battle:attack"));
-    const impact = describeImpact(step);
-    // 로그가 다 보인 뒤 잠깐 텀을 두고 나서야 shake/blink 연출이 시작되도록
+    // 로그가 다 보인 뒤 잠깐 텀을 두고 HP바 반영
     setTimeout(() => {
-      document.dispatchEvent(new CustomEvent("battle:impact", { detail: impact }));
-      const atkSide = step.side === "mine" ? "enemy" : "mine";
-      const playEffect = step.hasAttacker ? triggerAttackEffect(atkSide, step.side) : triggerBlink(step.side);
-      playEffect.then(() => {
-        applyPokemonVisual(step.side, step.pkmn, step.idx);
-        next();
-      });
-    }, HIT_ANIM_DELAY_MS);
+      applyPokemonVisual(step.side, step.pkmn, step.idx);
+      next();
+    }, HIT_DELAY_MS);
     return;
   }
 
@@ -623,9 +558,9 @@ function processBoardQueue() {
   }
 
   if (step.kind === "switch") {
-    updatePortrait(step.side, step.pkmn, true);
+    updatePortrait(step.side, step.pkmn);
     applyPokemonVisual(step.side, step.pkmn, step.idx);
-    setTimeout(next, 400); // 슬라이드 인 연출 재생 시간만큼 대기
+    next();
     return;
   }
 
@@ -668,9 +603,9 @@ function renderLogAndBoard(room) {
     renderedEventCount = events.length;
 
     applyPokemonVisual("mine", minePkmn, mineIdx);
-    updatePortrait("mine", minePkmn, false);
+    updatePortrait("mine", minePkmn);
     applyPokemonVisual("enemy", enemyPkmn, enemyIdx);
-    updatePortrait("enemy", enemyPkmn, false);
+    updatePortrait("enemy", enemyPkmn);
 
     boardInitialized = true;
     return;
@@ -796,9 +731,6 @@ function animateOneDice(elId, finalValue, duration = 1200) {
       if (elapsed >= duration) {
         clearInterval(timer);
         el.textContent = finalValue;
-        el.classList.remove("pop");
-        void el.offsetWidth;
-        el.classList.add("pop");
         resolve();
       }
     }, interval);

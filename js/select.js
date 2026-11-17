@@ -16,7 +16,6 @@ import { portraitUrl } from "./portrait.js";
 import { POKEMON_KO, POKEMON_FORMS_KO } from "./data/pokemonKo.js";
 
 const BALL_IMG = new URL("../img/몬스터볼.png", import.meta.url).href;
-const SELECT_CSS = new URL("../css/select.css", import.meta.url).href;
 
 const normalize = (s) => s.replace(/\s+/g, "").toLowerCase();
 const ID_BY_NAME = new Map(
@@ -48,18 +47,10 @@ function monSprite(mon) {
   return baseId ? spriteUrl(baseId, isShiny(mon?.name)) : portraitUrl(mon?.portrait);
 }
 
-// sides: 선택에 참여하는 자리 (싱글 p1·p2, 더블 p1~p4). p3 -> player3_uid
-const sideOf = (room, uid, sides) => sides.find((k) => room[`player${k.slice(1)}_uid`] === uid) ?? null;
-const selectionDone = (room, sides) => !room.select_phase && sides.every((k) => !!room[`${k}_entry`]?.length);
-
-function loadCss() {
-  if (document.getElementById("select-css")) return;
-  const link = document.createElement("link");
-  link.id = "select-css";
-  link.rel = "stylesheet";
-  link.href = SELECT_CSS;
-  document.head.append(link);
-}
+// 선택에 참여하는 자리 (p1 -> player1_uid)
+const SIDES = ["p1", "p2"];
+const sideOf = (room, uid) => SIDES.find((k) => room[`player${k.slice(1)}_uid`] === uid) ?? null;
+const selectionDone = (room) => !room.select_phase && SIDES.every((k) => !!room[`${k}_entry`]?.length);
 
 // 새로고침해도 내가 고른 순서를 유지 (게임마다 키가 다름)
 const storageKey = (room) => `select:${ROOM_ID}:${room.game_started_at}`;
@@ -92,7 +83,7 @@ function sendAction(roomRef, uid, type, payload) {
 }
 
 // 선택 단계가 끝나면(이미 끝났으면 즉시) resolve. spectator면 대기 화면만 보여준다.
-export function runSelection({ roomRef, myUid, spectator = false, sides = ["p1", "p2"] }) {
+export function runSelection({ roomRef, myUid, spectator = false }) {
   return new Promise((resolve) => {
     let ui = null;
     let entry = null;
@@ -106,7 +97,7 @@ export function runSelection({ roomRef, myUid, spectator = false, sides = ["p1",
       room = snap.data();
       if (!room || finished) return;
 
-      if (!room.game_started || selectionDone(room, sides)) {
+      if (!room.game_started || selectionDone(room)) {
         finished = true;
         unsub();
         if (ui) close(ui.overlay);
@@ -114,9 +105,8 @@ export function runSelection({ roomRef, myUid, spectator = false, sides = ["p1",
         return;
       }
 
-      mySide = spectator ? null : sideOf(room, myUid, sides);
+      mySide = spectator ? null : sideOf(room, myUid);
       if (!ui) {
-        loadCss();
         ui = build(!mySide);
         if (mySide) {
           entry = (await getDoc(doc(db, "users", myUid))).data()?.entry ?? [];
@@ -191,7 +181,6 @@ export function runSelection({ roomRef, myUid, spectator = false, sides = ["p1",
     }
 
     function render() {
-      const many = sides.length > 2;
       const name = (side) => room[`player${side.slice(1)}_name`] ?? `Player${side.slice(1)}`;
       const pill = (side, label) => {
         const done = !!room[`${side}_select_action`];
@@ -205,21 +194,19 @@ export function runSelection({ roomRef, myUid, spectator = false, sides = ["p1",
 
       ui.status.replaceChildren();
       if (!mySide) {
-        ui.desc.textContent = many
-          ? "모든 트레이너가 선택을 마치면 배틀이 시작됩니다."
-          : "두 트레이너가 모두 선택을 마치면 배틀이 시작됩니다.";
-        ui.status.append(...sides.map((k) => pill(k, name(k))));
+        ui.desc.textContent = "두 트레이너가 모두 선택을 마치면 배틀이 시작됩니다.";
+        ui.status.append(...SIDES.map((k) => pill(k, name(k))));
         return;
       }
 
       const need = pickCount(entry);
       const submitted = !!room[`${mySide}_select_action`];
-      ui.status.append(pill(mySide, "나"), ...sides.filter((k) => k !== mySide).map((k) => pill(k, name(k))));
+      ui.status.append(pill(mySide, "나"), ...SIDES.filter((k) => k !== mySide).map((k) => pill(k, name(k))));
 
       if (need === 0) {
         ui.desc.textContent = "엔트리에 포켓몬이 없습니다. 트레이너 카드를 확인해주세요.";
       } else if (submitted) {
-        ui.desc.textContent = many ? "다른 트레이너의 선택을 기다리는 중..." : "상대방의 선택을 기다리는 중...";
+        ui.desc.textContent = "상대방의 선택을 기다리는 중...";
       } else {
         ui.desc.textContent = `${need}마리를 고르세요. 고른 순서가 출전 순서가 되고, 한 번 더 누르면 취소됩니다.`;
       }
@@ -291,8 +278,7 @@ export function runSelection({ roomRef, myUid, spectator = false, sides = ["p1",
     }
 
     function close(overlay) {
-      overlay.classList.add("leaving");
-      setTimeout(() => overlay.remove(), 500);
+      overlay.remove();
     }
   });
 }
