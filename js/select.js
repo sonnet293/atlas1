@@ -126,7 +126,7 @@ export function runSelection({ roomRef, myUid, spectator = false }) {
 
       const head = el("header", "sel-head");
       head.append(
-        el("span", "sel-eyebrow", "POKEMON SELECT"),
+        
         el("h2", "sel-title", watchOnly ? "포켓몬을 고르는 중" : "출전할 포켓몬을 골라주세요"),
         el("p", "sel-desc")
       );
@@ -186,7 +186,7 @@ export function runSelection({ roomRef, myUid, spectator = false }) {
         const done = !!room[`${side}_select_action`];
         const p = el("span", "sel-pill");
         p.dataset.done = String(done);
-        p.append(el("i"), `${label} · ${done ? "선택 완료" : "선택 중"}`);
+        p.append(`${label} · ${done ? "선택 완료" : "선택 중"}`);
         return p;
       };
 

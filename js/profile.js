@@ -111,7 +111,7 @@ function typeChips(types) {
 
 function renderEntrySlot(index, mon) {
   const slot = el("div", "slot entry");
-  slot.append(el("span", "slot-no", String(index + 1).padStart(2, "0")), el("span", "slot-badge", "ENTRY"));
+  slot.append(el("span", "slot-no", String(index + 1).padStart(2, "0")), el("span", "slot-badge", "엔트리"));
 
   // 카드 표시 이름: entry[i].cardName (Firestore 에서만 수정) > entry[i].name
   const name = (typeof mon.cardName === "string" && mon.cardName.trim()) || mon.name;
@@ -158,7 +158,7 @@ function renderCustomSlot(index, mon) {
   edit.addEventListener("click", () => openSearch(index));
   slot.append(edit);
 
-  const remove = el("button", "slot-remove", "✕");
+  const remove = el("button", "slot-remove", "삭제");
   remove.type = "button";
   remove.title = "비우기";
   remove.setAttribute("aria-label", `${mon.name} 비우기`);
@@ -375,7 +375,7 @@ async function showOtherTrainer(uid) {
   avatarLabel.removeAttribute("role");
   avatarLabel.removeAttribute("aria-label");
   avatarLabel.tabIndex = -1;
-  avatarHolder.replaceChildren(el("span", "avatar-symbol", "?"), el("span", null, "프로필 사진 없음"));
+  avatarHolder.textContent = "프로필 사진 없음";
 
   try {
     const data = await loadPublicProfile(uid);

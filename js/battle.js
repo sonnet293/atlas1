@@ -24,13 +24,6 @@ const isSpectatorView = new URLSearchParams(location.search).get("spectator") ==
 const MOVE_BUTTON_COUNT = 4;
 const GM_WAIT_NOTICE_MS = 5000; // 이 시간 안에 GM이 요청을 처리하지 않으면 안내 문구 표시
 
-const TYPE_COLORS = {
-  노말: "#949495", 불: "#e56c3e", 물: "#5185c5", 전기: "#fbb917", 풀: "#66a945",
-  얼음: "#6dc8eb", 격투: "#e09c40", 독: "#735198", 땅: "#9c7743", 바위: "#bfb889",
-  비행: "#a2c3e7", 에스퍼: "#dd6b7b", 벌레: "#9fa244", 고스트: "#684870",
-  드래곤: "#535ca8", 악: "#4c4948", 강철: "#69a9c7", 페어리: "#dab4d4",
-};
-
 // 배틀 시작 대기 오버레이가 있는 페이지에서는, 양쪽 플레이어가 터치하기 전까지
 // 첫 라운드(행동 선택 단계)를 시작하지 않는다. intro.js가 끝나면 "battle:introDone"을 쏴준다.
 const hasIntro = !!document.getElementById("intro-overlay");
@@ -276,7 +269,6 @@ function updateHpBar(barId, textId, hp, maxHp, showNumbers) {
   if (!bar) return;
   const pct = maxHp > 0 ? Math.max(0, Math.min(100, (hp / maxHp) * 100)) : 0;
   bar.style.width = pct + "%";
-  bar.style.backgroundColor = pct > 50 ? "#4caf50" : pct > 20 ? "#ff9800" : "#f44336";
   if (txt) txt.innerText = showNumbers ? `HP: ${hp} / ${maxHp}` : "";
 }
 
@@ -354,14 +346,13 @@ function renderMoveButtons(room) {
     const chosen = !!room[`${myKey}_round_action`] && myChoice?.round === (room.round_no ?? 0) && myChoice.moveIdx === i;
     btn.classList.toggle("uturn-picking", uTurnPick === i || chosen);
     btn.style.display = "inline-flex";
-    btn.style.backgroundColor = TYPE_COLORS[moveData?.type] ?? "#777";
     btn.style.opacity = usable ? "1" : "0.45";
     // 날씨에 따라 명중률이 바뀌는 기술(예: 번개/폭풍은 비일 때 필중, 폭풍은 쾌청일 때 50)은 현재 날씨 기준으로 표시
     const weatherType = room.weather?.type;
     const accuracy = moveData?.weatherAccuracy?.[weatherType] ?? moveData?.accuracy;
     const alwaysHit = moveData?.alwaysHit || moveData?.weatherAlwaysHit?.includes(weatherType);
     const accText = alwaysHit ? "필중" : `${accuracy ?? "-"}%`;
-    btn.innerHTML = `<span class="move-btn-name">${move.name}</span><span class="move-btn-info">PP ${move.pp} | ${accText}</span>`;
+    btn.innerHTML = `<span class="move-btn-name">${move.name}</span><span class="move-btn-info">${moveData?.type ?? "-"} | PP ${move.pp} | ${accText}</span>`;
     btn.disabled = !usable;
     btn.onclick = () => {
       playButtonSound();

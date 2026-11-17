@@ -150,7 +150,7 @@ function initVolumeSlider() {
     if (bgmAudio) bgmAudio.volume = v
     slider.value = v
     label.innerText = Math.round(v * 100) + "%"
-    if (muteBtn) muteBtn.innerText = v === 0 ? "🔇" : v < 0.4 ? "🔉" : "🔊"
+    if (muteBtn) muteBtn.innerText = v === 0 ? "음소거 해제" : "음소거"
     try { localStorage.setItem(VOLUME_KEY, String(v)) } catch {}
   }
 
@@ -194,25 +194,9 @@ function skipIntro() {
 function showBgmToast(chosen) {
   if (document.getElementById("bgm-toast")) return
 
-  if (!document.getElementById("bgm-toast-style")) {
-    const s = document.createElement("style")
-    s.id = "bgm-toast-style"
-    s.textContent = `
-      #bgm-toast {
-        position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
-        background: rgba(0,0,0,0.8); color: #fff;
-        padding: 12px 24px; border-radius: 999px;
-        font-size: 14px; z-index: 9999;
-        border: none; cursor: pointer;
-        white-space: nowrap;
-      }
-    `
-    document.head.appendChild(s)
-  }
-
   const btn = document.createElement("button")
   btn.id = "bgm-toast"
-  btn.innerText = "🎵 탭하여 브금 재생"
+  btn.innerText = "BGM 재생"
 
   btn.onclick = () => {
     // 터치 컨텍스트 안에서 Audio 새로 생성 + play() → 모바일 정책 우회

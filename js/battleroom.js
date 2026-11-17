@@ -26,7 +26,7 @@ const isPlayerSlot = (slot) => PLAYER_SLOTS.includes(slot);
 const info = roomInfo(ROOM_ID);
 if (info) {
     document.getElementById("room-name").textContent = info.name;
-    document.title = `// ${info.name}`;
+    document.title = info.name;
 }
 
 const el = (tag, className, text) => {
@@ -46,7 +46,7 @@ function calcMySlot(room) {
 
 function slotLabel(slot) {
     if (isPlayerSlot(slot)) return `Player${slot.slice(-1)}`;
-    return "OBSERVE";
+    return "관전자";
 }
 
 onAuthStateChanged(auth, async (user) => {
@@ -191,7 +191,7 @@ let profileDialog = null;
 function openTrainerCard(uid) {
     if (!profileDialog) {
         profileDialog = el("dialog", "profile-dialog");
-        const close = el("button", "profile-dialog-close", "✕");
+        const close = el("button", "profile-dialog-close", "닫기");
         close.type = "button";
         close.setAttribute("aria-label", "닫기");
         close.onclick = () => profileDialog.close();
@@ -227,14 +227,14 @@ function renderPlayerRow(slot, room, mySlot) {
     const avatar = el("div", "player-avatar", "?");
     if (uid) fillAvatar(avatar, avatarOptions(uid, name));
 
-    const nameEl = el("strong", "player-name", uid ? (name ?? "-") : "EMPTY");
+    const nameEl = el("strong", "player-name", uid ? (name ?? "-") : "빈 자리");
 
     card.append(
-        el("span", "player-slot", `PLAYER ${slot.slice(-1)}`),
+        el("span", "player-slot", `Player${slot.slice(-1)}`),
         uid ? profileLink(uid, name, "profile-link", avatar, nameEl) : avatar,
     );
     if (!uid) card.append(nameEl);
-    if (uid) card.append(el("span", "ready-badge", ready ? "READY" : "WAITING"));
+    if (uid) card.append(el("span", "ready-badge", ready ? "READY" : "대기"));
 
     const idle = !room.swap_request && !room.game_started;
     // 관전자 -> 플레이어: 교체 요청

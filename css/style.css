@@ -104,7 +104,7 @@ h1, h2, h3 { margin: 0.3em 0; }
 .portrait-img.fainted { filter: grayscale(1); opacity: 0.4; }
 .hp-card { flex: 1; min-width: 0; }
 .hp-bar-bg { height: 8px; background: #ddd; }
-.hp-bar { height: 100%; width: 0; }
+.hp-bar { height: 100%; width: 0; background: #666; }
 .turn-info { text-align: center; min-width: 160px; }
 .result { font-weight: bold; }
 .dice-row { display: none; gap: 8px; justify-content: center; }
@@ -114,7 +114,7 @@ h1, h2, h3 { margin: 0.3em 0; }
 .battle-middle { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; margin-top: 12px; }
 #leaveBtn { padding: 4px 12px; border: 1px solid #999; cursor: pointer; margin-bottom: 8px; }
 .move-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
-.move-btn { flex-direction: column; align-items: center; padding: 8px; border: 1px solid #666; color: #fff; }
+.move-btn { flex-direction: column; align-items: center; padding: 8px; }
 .move-btn.uturn-picking { outline: 3px solid #000; outline-offset: 1px; }
 .move-btn-info { font-size: 0.8em; }
 .bench-list { display: flex; margin-top: 8px; }

@@ -21,7 +21,7 @@ const el = (tag, className, text) => {
 };
 
 const page = el("div", "room-page");
-page.setAttribute("aria-label", "SINGLE BATTLE");
+page.setAttribute("aria-label", "방 목록");
 grid.append(page);
 
 // 카드 뼈대는 로그인 확인 전에 먼저 그려둔다
@@ -31,11 +31,10 @@ for (const info of ROOMS) {
     card.dataset.roomId = info.id;
 
     const visual = el("div", "room-visual");
-    visual.append(el("span", "room-no", `ROOM ${String(info.no).padStart(2, "0")}`));
     const pill = el("span", "status-pill");
-    pill.append(el("i"), el("span", "status-label", "LOADING"));
+    pill.append(el("span", "status-label", "불러오는 중"));
     visual.append(pill);
-    const mine = el("span", "room-mine", "[ CONNECT ]");
+    const mine = el("span", "room-mine", "(내 방)");
     mine.hidden = true;
     visual.append(mine);
 
@@ -45,7 +44,7 @@ for (const info of ROOMS) {
     seats.append(makeSeat("P1"), el("span", "room-vs", "VS"), makeSeat("P2"));
     body.append(seats);
     const foot = el("div", "room-foot");
-    foot.append(el("span", "room-watchers", "OBSERVE 0"), el("span", "room-cta", "CONNECT →"));
+    foot.append(el("span", "room-watchers", "관전 0"), el("span", "room-cta", "입장"));
     body.append(foot);
 
     card.append(visual, body);
@@ -67,7 +66,7 @@ onAuthStateChanged(auth, async (user) => {
     myUid = user.uid;
 
     const userSnap = await getDoc(doc(db, "users", myUid));
-    const nickname = userSnap.data()?.nickname ?? "TRAINER";
+    const nickname = userSnap.data()?.nickname ?? "Trainer";
     document.getElementById("trainer-name").textContent = nickname;
     fillAvatar(document.getElementById("trainer-initial"), {
         uid: myUid,
@@ -96,12 +95,12 @@ function renderRooms(rooms) {
     }
 
     summary.innerHTML = "";
-    const labels = { waiting: "STANDBY", playing: "SIMULATING", ended: "COMPLETE" };
+    const labels = { waiting: "대기 중", playing: "배틀 중", ended: "종료" };
     for (const [key, n] of Object.entries(counts)) {
         if (!n) continue;
         const pill = el("span", "status-pill");
         pill.dataset.status = key;
-        pill.append(el("i"), `${labels[key]} ${n}`);
+        pill.append(`${labels[key]} ${n}`);
         summary.append(pill);
     }
 }
@@ -123,7 +122,7 @@ function renderCard(card, room, status) {
         const won = room?.battle_winner === key;
         seat.dataset.empty = String(!name);
         seat.dataset.winner = String(!!name && won);
-        seat.querySelector(".seat-name").textContent = name ?? "NO SIGNAL...";
+        seat.querySelector(".seat-name").textContent = name ?? "-";
 
         let tag = "";
         if (status.key === "ended" && won) tag = "WIN";
@@ -132,7 +131,7 @@ function renderCard(card, room, status) {
     });
 
     const spectatorCount = room?.spectators?.length ?? 0;
-    card.querySelector(".room-watchers").textContent = closed ? "GM이 방을 열면 입장할 수 있어요" : `OBSERVE ${spectatorCount}`;
+    card.querySelector(".room-watchers").textContent = closed ? "GM이 방을 열면 입장할 수 있어요" : `관전 ${spectatorCount}`;
 
     const isMine = !!room && !!myUid && (
         slots.some((slot) => room[`${slot}_uid`] === myUid) ||
@@ -141,9 +140,9 @@ function renderCard(card, room, status) {
     card.querySelector(".room-mine").hidden = !isMine;
 
     const seatsFull = slots.every((slot) => !!room?.[`${slot}_uid`]);
-    let cta = "CONNECT →";
+    let cta = "입장";
     if (closed) cta = "";
-    else if (isMine) cta = "CONNECT →";
-    else if (status.key !== "waiting" || seatsFull) cta = "OBSERVE →";
+    else if (isMine) cta = "입장";
+    else if (status.key !== "waiting" || seatsFull) cta = "관전";
     card.querySelector(".room-cta").textContent = cta;
 }
